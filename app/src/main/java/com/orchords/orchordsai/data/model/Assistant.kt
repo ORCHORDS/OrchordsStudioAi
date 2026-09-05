@@ -207,6 +207,8 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
     if (keywords.isEmpty()) return false
 
     return keywords.any { keyword ->
+        // Empty imported/editor rows must not turn into implicit constant-active entries.
+        if (keyword.isBlank()) return@any false
         if (useRegex) {
             try {
                 val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
@@ -227,12 +229,20 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
 /**
  *
  */
+/** Product limit for lorebook trigger history; default per-entry depth remains four. */
+const val MAX_LOREBOOK_SCAN_DEPTH = 256
+
 fun extractContextForMatching(
     messages: List<UIMessage>,
     scanDepth: Int
 ): String {
     return messages
-        .takeLast(scanDepth)
+        // Only actual conversational turns count toward trigger depth. Generated context
+        // must not activate other books or consume the configured history window.
+        .asReversed().asSequence()
+        .filterNot { it.isSynthetic || it.role == MessageRole.SYSTEM }
+        .take(scanDepth.coerceIn(0, MAX_LOREBOOK_SCAN_DEPTH))
+        .toList().asReversed()
         .joinToString("\n") { it.toText() }
 }
 

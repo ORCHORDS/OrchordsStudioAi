@@ -2,11 +2,12 @@ package com.orchords.orchordsai.data.extensions
 
 /** Original offline guidance. Definitions request capabilities; they never grant them. */
 internal fun builtInLibraryCatalog(): LibraryCatalog = LibraryCatalog(
-    version = 1,
-    modes = builtInModes(),
-    lorebooks = builtInLorebooks(),
-    skills = builtInEngineeringSkills() + builtInProductivitySkills(),
-)
+    version = 2,
+    modes = builtInModes() + expandedModes(),
+    lorebooks = builtInLorebooks() + expandedLorebooks(),
+    skills = builtInEngineeringSkills() + builtInProductivitySkills() +
+        expandedEngineeringSkills() + expandedKnowledgeSkills() + expandedCreativeSkills(),
+).also(::validateLibraryCatalog)
 
 internal fun librarySkill(
     slug: String,
