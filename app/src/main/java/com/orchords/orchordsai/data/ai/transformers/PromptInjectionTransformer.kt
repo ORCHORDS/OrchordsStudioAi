@@ -53,6 +53,8 @@ internal fun transformMessages(
         return messages
     }
 
+    injections.forEach { requireSupportedInjectionRole(it.position, it.role) }
+
     // Priority is authoritative. UUID provides a stable secondary key so equal-priority
     // imports produce the same order regardless of collection/list reconstruction order.
     val byPosition = injections
@@ -116,6 +118,9 @@ internal fun applyInjections(
     messages: List<UIMessage>,
     byPosition: Map<InjectionPosition, List<PromptInjection>>
 ): List<UIMessage> {
+    byPosition.forEach { (position, injections) ->
+        injections.forEach { requireSupportedInjectionRole(position, it.role) }
+    }
     val result = messages.toMutableList()
 
     val systemIndex = result.indexOfFirst { it.role == MessageRole.SYSTEM }
@@ -230,7 +235,8 @@ private fun createMergedInjectionMessages(injections: List<PromptInjection>): Li
         val mergedContent = grouped.joinToString("\n") { it.content }
         when (role) {
             MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
-            else -> UIMessage.user(mergedContent)
+            MessageRole.USER -> UIMessage.user(mergedContent)
+            else -> throw IllegalArgumentException("Unsupported standalone prompt injection role $role")
         }.copy(
             isSynthetic = true,
         )
