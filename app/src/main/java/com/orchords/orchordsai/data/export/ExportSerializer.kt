@@ -65,7 +65,6 @@ private fun <T : PromptInjection> validatePromptInjectionForImport(injection: T)
     requireSupportedInjectionRole(
         position = injection.position,
         role = injection.role,
-        source = "Imported prompt injection '${injection.name}'",
     )
 
     if (injection is PromptInjection.RegexInjection) {
