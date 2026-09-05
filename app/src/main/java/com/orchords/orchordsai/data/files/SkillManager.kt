@@ -21,10 +21,9 @@ class SkillManager(
         return dir
     }
 
-    fun listSkills(): List<SkillMetadata> {
-        val skillsDir = getSkillsDir()
-        return skillsDir.listFiles()
-            ?.filter { it.isDirectory }
+    fun listSkills(): List<SkillMetadata> = SkillPackageStore.withLock {
+        getSkillsDir().listFiles()
+            ?.filter { it.isDirectory && !it.name.startsWith('.') }
             ?.mapNotNull { dir ->
                 val skillFile = dir.resolve("SKILL.md")
                 if (!skillFile.exists()) return@mapNotNull null
@@ -33,29 +32,23 @@ class SkillManager(
             ?: emptyList()
     }
 
-    fun readSkillBody(skillName: String): String? {
-        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return null
-        if (!skillFile.exists()) return null
-        return SkillFrontmatterParser.extractBody(skillFile.readText())
+    fun readSkillBody(skillName: String): String? =
+        readSkillContent(skillName)?.let(SkillFrontmatterParser::extractBody)
+
+    fun readSkillContent(skillName: String): String? = SkillPackageStore.withLock {
+        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return@withLock null
+        runCatching { readBoundedSkillText(skillFile) }.getOrNull()
     }
 
-    fun readSkillContent(skillName: String): String? {
-        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return null
-        if (!skillFile.exists()) return null
-        return skillFile.readText()
-    }
-
-    fun saveSkill(name: String, content: String): SkillMetadata? {
-        if (!saveSkillFileBytesAtomically(name, mapOf("SKILL.md" to content.toByteArray()))) {
-            return null
-        }
-        val skillDir = resolveSkillDir(name) ?: return null
-        return parseSkillFile(skillDir.resolve("SKILL.md"), skillDir)
+    fun saveSkill(name: String, content: String): SkillMetadata? = SkillPackageStore.withLock {
+        if (!saveSkillFile(name, "SKILL.md", content)) return@withLock null
+        val skillDir = resolveSkillDir(name) ?: return@withLock null
+        parseSkillFile(skillDir.resolve("SKILL.md"), skillDir)
     }
 
     suspend fun deleteSkill(name: String): Boolean = withContext(Dispatchers.IO) {
         val skillDir = resolveSkillDir(name) ?: return@withContext false
-        val deleted = skillDir.deleteRecursively()
+        val deleted = SkillPackageStore.withLock { skillDir.deleteRecursively() }
         if (deleted) {
             settingsStore.update { settings ->
                 settings.copy(
@@ -77,7 +70,10 @@ class SkillManager(
      */
     suspend fun pruneOrphanedEnabledSkills(): List<SkillMetadata> = withContext(Dispatchers.IO) {
         val skills = listSkills()
+        val directories = SkillPackageStore.withLock { getSkillsDir().listFiles() }
+            ?: return@withContext skills
         val existing = skills.mapTo(HashSet()) { it.name }
+        directories.filter { it.isDirectory && !it.name.startsWith('.') }.forEach { existing.add(it.name) }
         settingsStore.update { settings ->
             var changed = false
             val newAssistants = settings.assistants.map { assistant ->
@@ -97,69 +93,31 @@ class SkillManager(
     fun getSkillDir(skillName: String): File? = resolveSkillDir(skillName)
 
     fun saveSkillFile(skillName: String, relativePath: String, content: String): Boolean {
-        val skillDir = resolveSkillDir(skillName) ?: return false
-        val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return false
-        target.parentFile?.mkdirs()
-        target.writeText(content)
-        return true
-    }
-
-    fun saveSkillFilesAtomically(skillName: String, files: Map<String, String>): Boolean {
-        return saveSkillFileBytesAtomically(
-            skillName = skillName,
-            files = files.mapValues { it.value.toByteArray() },
+        val limits = SkillPackageLimits()
+        if (content.length > limits.maxFileBytes) return false
+        return SkillPackageStore.saveFile(
+            context.filesDir.resolve(FileFolders.SKILLS), skillName, relativePath,
+            content.toByteArray(Charsets.UTF_8), limits,
         )
     }
 
-    fun saveSkillFileBytesAtomically(skillName: String, files: Map<String, ByteArray>): Boolean {
-        val skillsDir = getSkillsDir()
-        val targetDir = resolveSkillDir(skillName) ?: return false
-        val stagingDir = createTempSkillDir(skillsDir, skillName, "staging") ?: return false
-        var backupDir: File? = null
-
-        try {
-            for ((relativePath, content) in files) {
-                val target = SkillPaths.resolveSkillFile(stagingDir, relativePath) ?: return false
-                target.parentFile?.mkdirs()
-                target.writeBytes(content)
-            }
-
-            if (!stagingDir.resolve("SKILL.md").exists()) return false
-
-            if (targetDir.exists()) {
-                backupDir = createTempSkillDir(skillsDir, skillName, "backup") ?: return false
-                if (!targetDir.renameTo(backupDir)) return false
-            }
-
-            if (!stagingDir.renameTo(targetDir)) {
-                if (backupDir != null && !targetDir.exists()) {
-                    backupDir.renameTo(targetDir)
-                }
-                return false
-            }
-
-            backupDir?.deleteRecursively()
-            return true
-        } catch (e: Exception) {
-            Log.w(TAG, "saveSkillFilesAtomically: Failed to save $skillName", e)
-            if (backupDir != null && !targetDir.exists()) {
-                backupDir.renameTo(targetDir)
-            }
-            return false
-        } finally {
-            if (stagingDir.exists()) {
-                stagingDir.deleteRecursively()
-            }
-            if (backupDir?.exists() == true && targetDir.exists()) {
-                backupDir.deleteRecursively()
-            }
-        }
+    fun saveSkillFilesAtomically(skillName: String, files: Map<String, String>): Boolean {
+        val limits = SkillPackageLimits()
+        if (files.size > limits.maxFiles || files.values.any { it.length > limits.maxFileBytes } ||
+            files.values.sumOf { it.length.toLong() } > limits.maxTotalBytes) return false
+        return saveSkillFileBytesAtomically(
+            skillName = skillName,
+            files = files.mapValues { it.value.toByteArray(Charsets.UTF_8) },
+        )
     }
 
-    fun deleteSkillFile(skillName: String, relativePath: String): Boolean {
-        val skillDir = resolveSkillDir(skillName) ?: return false
-        val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return false
-        return target.delete()
+    fun saveSkillFileBytesAtomically(skillName: String, files: Map<String, ByteArray>): Boolean =
+        SkillPackageStore.replace(context.filesDir.resolve(FileFolders.SKILLS), skillName, files)
+
+    fun deleteSkillFile(skillName: String, relativePath: String): Boolean = SkillPackageStore.withLock {
+        val skillDir = resolveSkillDir(skillName) ?: return@withLock false
+        val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return@withLock false
+        target.delete()
     }
 
     fun resolveSkillFile(skillName: String, relativePath: String): File? {
@@ -171,19 +129,9 @@ class SkillManager(
         return SkillPaths.resolveSkillDir(getSkillsDir(), skillName)
     }
 
-    private fun createTempSkillDir(skillsRoot: File, skillName: String, suffix: String): File? {
-        repeat(100) { attempt ->
-            val candidate = skillsRoot.resolve(".$skillName.$suffix.$attempt.tmp")
-            if (!candidate.exists() && candidate.mkdirs()) {
-                return candidate
-            }
-        }
-        return null
-    }
-
     private fun parseSkillFile(skillFile: File, skillDir: File): SkillMetadata? {
         return runCatching {
-            val content = skillFile.readText()
+            val content = readBoundedSkillText(skillFile)
             val frontmatter = SkillFrontmatterParser.parse(content)
             val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: return null
             val description = frontmatter["description"]?.takeIf { it.isNotBlank() } ?: return null
