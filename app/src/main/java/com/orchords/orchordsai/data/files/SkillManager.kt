@@ -191,7 +191,7 @@ class SkillManager(
                 name = name,
                 description = description,
                 compatibility = frontmatter["compatibility"],
-                disableModelInvocation = frontmatter.getBoolean("disable-model-invocation") ?: false,
+                disableModelInvocation = frontmatter.isModelInvocationDisabled(),
                 skillDir = skillDir,
             )
         }.getOrElse {

@@ -155,4 +155,24 @@ class SkillsToolsTest {
             buildJsonObject { put("name", auto.name); put("approved", true) },
         ).forEach { arguments -> assertTrue(runCatching { tool.execute(arguments) }.isFailure) }
     }
+
+
+    @Test
+    fun `malformed invocation policy is rejected after discovery for default and reference reads`() = runBlocking {
+        val auto = skill("auto")
+        auto.skillDir.resolve("guide.txt").writeText("Reference must remain private")
+        val tool = createSkillTools(setOf(auto.name), listOf(auto)).single()
+        listOf("null", "\"\"", "\"  \"", "truee", "automatic", "0", "1", "[]", "[false]", "{value: false}").forEach { value ->
+            auto.skillFile.writeText("---\nname: auto\ndescription: Test skill\ndisable-model-invocation: $value\n---\nPrivate instructions")
+            listOf<String?>(null, "guide.txt").forEach { path ->
+                assertTrue("Malformed policy must reject this stale automatic invocation", runCatching {
+                    tool.execute(buildJsonObject { put("name", auto.name); path?.let { put("path", it) } })
+                }.isFailure)
+            }
+        }
+        auto.skillFile.writeText("---\nname: auto\ndescription: Test skill\ndisable-model-invocation: false\n---\nAutomatic instructions")
+        val result = tool.execute(buildJsonObject { put("name", auto.name) })
+        assertEquals("Automatic instructions", (result.single() as UIMessagePart.Text).text)
+    }
+
 }
