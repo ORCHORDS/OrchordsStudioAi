@@ -51,6 +51,12 @@ class SkillFrontmatter internal constructor(
 ) {
     operator fun get(key: String): String? = values[key] as? String
 
+    /** Missing policy preserves automatic use; a present malformed policy never grants it. */
+    fun isModelInvocationDisabled(): Boolean {
+        val key = "disable-model-invocation"
+        return values.containsKey(key) && getBoolean(key) != false
+    }
+
     /**
      * Read a boolean frontmatter field by [key].
      *

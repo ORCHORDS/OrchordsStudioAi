@@ -81,7 +81,7 @@ fun createSkillTools(
                     require(current["name"] == skill.name && !current["description"].isNullOrBlank()) {
                         "Skill metadata changed or is invalid; refresh the skill list"
                     }
-                    require(current.getBoolean("disable-model-invocation") != true) {
+                    require(!current.isModelInvocationDisabled()) {
                         "Skill is not available for model invocation"
                     }
                     val content = if (path.isNullOrBlank() || path == "SKILL.md") {
