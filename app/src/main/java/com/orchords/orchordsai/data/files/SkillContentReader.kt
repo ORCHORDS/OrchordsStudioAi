@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 internal const val MAX_SKILL_CONTENT_BYTES = 128 * 1024
@@ -34,14 +33,11 @@ internal fun readBoundedSkillBytes(input: InputStream, maxBytes: Int): ByteArray
 internal fun decodeSkillText(bytes: ByteArray): String {
     require(bytes.size <= MAX_SKILL_CONTENT_BYTES) { "Skill content exceeds 128 KiB" }
     require(bytes.none { it == 0.toByte() }) { "Skill content must be UTF-8 text" }
-    return try {
-        Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes)).toString()
-    } catch (error: CharacterCodingException) {
-        throw IllegalArgumentException("Skill content must be valid UTF-8 text", error)
-    }
+    // Preserve CharacterCodingException for existing file-reader callers.
+    return Charsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes)).toString()
 }
 
 internal fun readBoundedSkillText(file: File): String {

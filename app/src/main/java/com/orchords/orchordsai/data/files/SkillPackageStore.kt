@@ -92,7 +92,8 @@ internal object SkillPackageStore {
             check(staging.mkdir()) { "Cannot create skill staging directory" }
             files.forEach { (path, bytes) ->
                 val file = staging.resolve(path)
-                check(file.parentFile.isDirectory || file.parentFile.mkdirs()) { "Cannot stage skill file" }
+                val parent = requireNotNull(file.parentFile) { "Skill file has no parent directory" }
+                check(parent.isDirectory || parent.mkdirs()) { "Cannot stage skill file" }
                 requireNotLink(file)
                 file.outputStream().use { output ->
                     output.write(bytes)

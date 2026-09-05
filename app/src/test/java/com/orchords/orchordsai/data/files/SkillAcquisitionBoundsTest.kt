@@ -2,6 +2,7 @@ package com.orchords.orchordsai.data.files
 
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.nio.charset.CharacterCodingException
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -31,9 +32,10 @@ class SkillAcquisitionBoundsTest {
     }
 
     @Test fun `strict decoder rejects malformed UTF8 and NUL`() {
-        listOf(byteArrayOf(0xc3.toByte(), 0x28), byteArrayOf(0)).forEach { bytes ->
-            assertThrows(IllegalArgumentException::class.java) { decodeSkillText(bytes) }
+        assertThrows(CharacterCodingException::class.java) {
+            decodeSkillText(byteArrayOf(0xc3.toByte(), 0x28))
         }
+        assertThrows(IllegalArgumentException::class.java) { decodeSkillText(byteArrayOf(0)) }
         assertEquals("text", decodeSkillText("text".toByteArray()))
     }
 }
