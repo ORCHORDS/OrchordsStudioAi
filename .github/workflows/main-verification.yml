@@ -7,12 +7,6 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'LICENSE'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
   merge_group:
     branches: [main]
   workflow_dispatch:
@@ -23,20 +17,14 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   queue: single
-  # PRs: newest verification replaces the running one for fast feedback.
-  # Main/merge_group: let the in-flight trusted run finish so the required
-  # check reports for that exact SHA and the persistent runner keeps a
-  # complete Gradle workspace for the queued run. Pattern from
-  # ORCHORDS/W.A.S.P ci.yml.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Trusted main/merge-group validation must finish for its exact SHA.
+  # Pull requests are handled exclusively by pr-required-checks.yml.
+  cancel-in-progress: false
 
 jobs:
-  # Tests run in a parallel job so a broken push fails fast while the
-  # assemble job is still packaging. Fork/public PRs stay on GitHub-hosted
-  # runners (security boundary); trusted events use the dedicated runner
-  # with its warm daemon and persistent workspace.
+  # Post-merge/main verification stays on the dedicated warm runner.
   test:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'main-verification' }}
+    runs-on: main-verification
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -49,22 +37,18 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
-          gradle: ${{ github.event_name == 'pull_request' }}
+          gradle: false
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Run unit tests and lint
-        env:
-          # Hosted PR jobs use an isolated daemon-free invocation. Gradle
-          # already stops task execution on failure by default.
-          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon' || '' }}
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew $GRADLE_FLAGS :app:testDebugUnitTest :app:lintDebug
+          ./gradlew :app:testDebugUnitTest :app:lintDebug
 
   assemble:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'main-verification' }}
+    runs-on: main-verification
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -77,14 +61,12 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
-          gradle: ${{ github.event_name == 'pull_request' }}
+          gradle: false
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Assemble debug APK
-        env:
-          GRADLE_FLAGS: ${{ github.event_name == 'pull_request' && '--no-daemon' || '' }}
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew $GRADLE_FLAGS -PciVerify :app:assembleDebug
+          ./gradlew -PciVerify :app:assembleDebug
