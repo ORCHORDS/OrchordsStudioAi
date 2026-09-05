@@ -14,8 +14,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Main Verification
+  app_tests:
+    name: App Unit Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+      - name: Run app unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest
+
+  android_lint:
+    name: Android Lint
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -24,12 +41,75 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: ./.github/actions/setup-build
-      - name: Verify application and provider behavior
+      - name: Run Android lint with Gradle profile
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :ai:test
+          ./gradlew --no-daemon --profile :app:lintDebug
+      - name: Upload lint Gradle profile
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lint-gradle-profile-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: build/reports/profile/
+          if-no-files-found: warn
+          retention-days: 7
+
+  ai_tests:
+    name: AI Provider Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-build
+        with:
+          web: false
+      - name: Run AI provider tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :ai:test
+
+  verify:
+    name: Main Verification
+    if: always()
+    needs:
+      - app_tests
+      - android_lint
+      - ai_tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification shard to succeed
+        env:
+          APP_TESTS_RESULT: ${{ needs.app_tests.result }}
+          ANDROID_LINT_RESULT: ${{ needs.android_lint.result }}
+          AI_TESTS_RESULT: ${{ needs.ai_tests.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for pair in \
+            "App Unit Tests:$APP_TESTS_RESULT" \
+            "Android Lint:$ANDROID_LINT_RESULT" \
+            "AI Provider Tests:$AI_TESTS_RESULT"
+          do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            printf '%s: %s\n' "$name" "$result"
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo '::error::One or more required verification shards did not succeed.'
+            exit 1
+          fi
 
   build:
     name: Daily Build
