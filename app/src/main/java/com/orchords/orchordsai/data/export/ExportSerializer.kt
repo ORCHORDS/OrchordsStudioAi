@@ -3,7 +3,7 @@ package com.orchords.orchordsai.data.export
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import com.orchords.ai.core.MessageRole
+import com.orchords.orchordsai.data.ai.transformers.requireSupportedInjectionRole
 import com.orchords.orchordsai.data.model.InjectionPosition
 import com.orchords.orchordsai.data.model.Lorebook
 import com.orchords.orchordsai.data.model.MAX_LOREBOOK_SCAN_DEPTH
@@ -62,22 +62,11 @@ interface ExportSerializer<T> {
 }
 
 private fun <T : PromptInjection> validatePromptInjectionForImport(injection: T): T {
-    when (injection.position) {
-        InjectionPosition.BEFORE_SYSTEM_PROMPT,
-        InjectionPosition.AFTER_SYSTEM_PROMPT -> {
-            require(injection.role != MessageRole.TOOL) {
-                "Tool-role prompt injections are not supported at ${injection.position}"
-            }
-        }
-
-        InjectionPosition.TOP_OF_CHAT,
-        InjectionPosition.BOTTOM_OF_CHAT,
-        InjectionPosition.AT_DEPTH -> {
-            require(injection.role == MessageRole.USER || injection.role == MessageRole.ASSISTANT) {
-                "Standalone prompt injections require USER or ASSISTANT role"
-            }
-        }
-    }
+    requireSupportedInjectionRole(
+        position = injection.position,
+        role = injection.role,
+        source = "Imported prompt injection '${injection.name}'",
+    )
 
     if (injection is PromptInjection.RegexInjection) {
         require(injection.scanDepth in 0..MAX_LOREBOOK_SCAN_DEPTH) {
