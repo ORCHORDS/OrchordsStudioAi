@@ -36,3 +36,43 @@ internal suspend fun appendLibraryContent(
     // Returning before edit commits, or optimistically changing SettingsFlow, would be false success.
     return receipt
 }
+
+/**
+ * Mutate only the persisted mode list inside DataStore's serialized read-modify-write transaction.
+ * The caller supplies a pure transformation; corrupt content aborts instead of becoming an empty list.
+ */
+internal suspend fun updateModeInjections(
+    store: DataStore<Preferences>,
+    transform: (List<PromptInjection.ModeInjection>) -> List<PromptInjection.ModeInjection>,
+) {
+    store.edit { preferences ->
+        val current = JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(
+            preferences[SettingsStore.MODE_INJECTIONS] ?: "[]"
+        )
+        val updated = transform(current)
+        require(updated.map { it.id }.distinct().size == updated.size) {
+            "Mode injection IDs must be unique"
+        }
+        preferences[SettingsStore.MODE_INJECTIONS] = JsonInstant.encodeToString(updated)
+    }
+}
+
+/**
+ * Mutate only the persisted lorebook list inside DataStore's serialized read-modify-write transaction.
+ * Unrelated preferences and concurrent mode changes cannot be overwritten by this operation.
+ */
+internal suspend fun updateLorebooks(
+    store: DataStore<Preferences>,
+    transform: (List<Lorebook>) -> List<Lorebook>,
+) {
+    store.edit { preferences ->
+        val current = JsonInstant.decodeFromString<List<Lorebook>>(
+            preferences[SettingsStore.LOREBOOKS] ?: "[]"
+        )
+        val updated = transform(current)
+        require(updated.map { it.id }.distinct().size == updated.size) {
+            "Lorebook IDs must be unique"
+        }
+        preferences[SettingsStore.LOREBOOKS] = JsonInstant.encodeToString(updated)
+    }
+}

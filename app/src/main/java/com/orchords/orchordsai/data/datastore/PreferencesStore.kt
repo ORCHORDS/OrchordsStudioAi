@@ -343,6 +343,18 @@ class SettingsStore(
         )
     }
 
+    /** Replace only the persisted mode-injection key; unrelated Settings cannot be replayed stale. */
+    suspend fun replaceModeInjections(modeInjections: List<PromptInjection.ModeInjection>) {
+        check(!settingsFlow.value.init) { "Settings have not finished loading" }
+        updateModeInjections(dataStore) { modeInjections }
+    }
+
+    /** Replace only the persisted lorebook key; unrelated Settings cannot be replayed stale. */
+    suspend fun replaceLorebooks(lorebooks: List<Lorebook>) {
+        check(!settingsFlow.value.init) { "Settings have not finished loading" }
+        updateLorebooks(dataStore) { lorebooks }
+    }
+
     suspend fun update(settings: Settings) {
         if(settings.init) {
             Log.w(TAG, "Cannot update dummy settings")
