@@ -2,6 +2,8 @@ package com.orchords.orchordsai.data.model
 
 import com.orchords.ai.ui.UIMessage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LorebookScanDepthTest {
@@ -40,5 +42,37 @@ class LorebookScanDepthTest {
         val expected = messages.takeLast(MAX_LOREBOOK_SCAN_DEPTH).joinToString("\n") { it.toText() }
 
         assertEquals(expected, extractContextForMatching(messages, Int.MAX_VALUE))
+    }
+
+    @Test
+    fun `blank literal keyword cannot make an entry always active`() {
+        val entry = PromptInjection.RegexInjection(keywords = listOf("", "   "))
+
+        assertFalse(entry.isTriggered("ordinary conversation"))
+    }
+
+    @Test
+    fun `blank regex keyword cannot make an entry always active`() {
+        val entry = PromptInjection.RegexInjection(keywords = listOf("\t"), useRegex = true)
+
+        assertFalse(entry.isTriggered("ordinary conversation"))
+    }
+
+    @Test
+    fun `blank keywords are ignored while a real keyword can still trigger`() {
+        val entry = PromptInjection.RegexInjection(keywords = listOf("", "  ", "Kotlin"))
+
+        assertTrue(entry.isTriggered("We are debugging Kotlin code"))
+        assertFalse(entry.isTriggered("We are debugging Java code"))
+    }
+
+    @Test
+    fun `constant active remains explicit even without usable keywords`() {
+        val entry = PromptInjection.RegexInjection(
+            keywords = listOf(""),
+            constantActive = true,
+        )
+
+        assertTrue(entry.isTriggered(""))
     }
 }
