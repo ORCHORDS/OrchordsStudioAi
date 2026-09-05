@@ -3,16 +3,18 @@ package com.orchords.orchordsai.data.export
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.orchords.ai.core.MessageRole
+import com.orchords.orchordsai.data.model.InjectionPosition
+import com.orchords.orchordsai.data.model.Lorebook
+import com.orchords.orchordsai.data.model.MAX_LOREBOOK_SCAN_DEPTH
+import com.orchords.orchordsai.data.model.PromptInjection
+import com.orchords.orchordsai.utils.toLocalString
+import java.time.LocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
-import com.orchords.orchordsai.data.model.InjectionPosition
-import com.orchords.orchordsai.data.model.Lorebook
-import com.orchords.orchordsai.data.model.PromptInjection
-import com.orchords.orchordsai.utils.toLocalString
-import java.time.LocalDateTime
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -59,6 +61,32 @@ interface ExportSerializer<T> {
     }
 }
 
+private fun <T : PromptInjection> validatePromptInjectionForImport(injection: T): T {
+    when (injection.position) {
+        InjectionPosition.BEFORE_SYSTEM_PROMPT,
+        InjectionPosition.AFTER_SYSTEM_PROMPT -> {
+            require(injection.role != MessageRole.TOOL) {
+                "Tool-role prompt injections are not supported at ${injection.position}"
+            }
+        }
+
+        InjectionPosition.TOP_OF_CHAT,
+        InjectionPosition.BOTTOM_OF_CHAT,
+        InjectionPosition.AT_DEPTH -> {
+            require(injection.role == MessageRole.USER || injection.role == MessageRole.ASSISTANT) {
+                "Standalone prompt injections require USER or ASSISTANT role"
+            }
+        }
+    }
+
+    if (injection is PromptInjection.RegexInjection) {
+        require(injection.scanDepth in 0..MAX_LOREBOOK_SCAN_DEPTH) {
+            "Lorebook scan depth must be between 0 and $MAX_LOREBOOK_SCAN_DEPTH"
+        }
+    }
+    return injection
+}
+
 object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection> {
     override val type = "mode_injection"
 
@@ -74,24 +102,21 @@ object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection>
     }
 
     override fun import(context: Context, uri: Uri): Result<PromptInjection.ModeInjection> {
-        return runCatching {
-            val json = readUri(context, uri)
-            tryImportNative(json)
-                ?: throw IllegalArgumentException("Unsupported format")
-        }
+        return runCatching { decodeForImport(readUri(context, uri)) }
     }
 
-    private fun tryImportNative(json: String): PromptInjection.ModeInjection? {
-        return runCatching {
-            val exportData = ExportSerializer.DefaultJson.decodeFromString(
-                ExportData.serializer(),
-                json
-            )
-            if (exportData.type != type) return null
-            ExportSerializer.DefaultJson
-                .decodeFromJsonElement<PromptInjection.ModeInjection>(exportData.data)
-                .copy(id = Uuid.random())
-        }.getOrNull()
+    internal fun decodeForImport(json: String): PromptInjection.ModeInjection {
+        val exportData = runCatching {
+            ExportSerializer.DefaultJson.decodeFromString(ExportData.serializer(), json)
+        }.getOrElse {
+            throw IllegalArgumentException("Unsupported format")
+        }
+        require(exportData.type == type) { "Unsupported format" }
+
+        val decoded = ExportSerializer.DefaultJson
+            .decodeFromJsonElement<PromptInjection.ModeInjection>(exportData.data)
+        validatePromptInjectionForImport(decoded)
+        return decoded.copy(id = Uuid.random())
     }
 }
 
@@ -111,60 +136,58 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
 
     override fun import(context: Context, uri: Uri): Result<Lorebook> {
         return runCatching {
-            val json = readUri(context, uri)
-            tryImportNative(json)
-                ?: tryImportSillyTavern(json, getUriFileName(context, uri)?.removeSuffix(".json"))
-                ?: throw IllegalArgumentException("Unsupported format")
+            decodeForImport(
+                json = readUri(context, uri),
+                fileName = getUriFileName(context, uri)?.removeSuffix(".json"),
+            )
         }
     }
 
-    private fun tryImportNative(json: String): Lorebook? {
-        return runCatching {
-            val exportData = ExportSerializer.DefaultJson.decodeFromString(
-                ExportData.serializer(),
-                json
-            )
-            if (exportData.type != type) return null
-            ExportSerializer.DefaultJson
-                .decodeFromJsonElement<Lorebook>(exportData.data)
-                .copy(
-                    id = Uuid.random(),
-                    entries = ExportSerializer.DefaultJson
-                        .decodeFromJsonElement<Lorebook>(exportData.data)
-                        .entries.map { it.copy(id = Uuid.random()) }
-                )
+    internal fun decodeForImport(json: String, fileName: String?): Lorebook {
+        val nativeEnvelope = runCatching {
+            ExportSerializer.DefaultJson.decodeFromString(ExportData.serializer(), json)
         }.getOrNull()
-    }
 
-    private fun tryImportSillyTavern(json: String, fileName: String?): Lorebook? {
-        return runCatching {
-            val stLorebook = ExportSerializer.DefaultJson.decodeFromString(
-                SillyTavernLorebook.serializer(),
-                json
-            )
-            Lorebook(
+        if (nativeEnvelope != null) {
+            require(nativeEnvelope.type == type) { "Unsupported format" }
+            val decoded = ExportSerializer.DefaultJson
+                .decodeFromJsonElement<Lorebook>(nativeEnvelope.data)
+            decoded.entries.forEach(::validatePromptInjectionForImport)
+            return decoded.copy(
                 id = Uuid.random(),
-                name = fileName ?: LocalDateTime.now().toLocalString(),
-                description = "",
-                enabled = true,
-                entries = stLorebook.entries.values.map { entry ->
-                    PromptInjection.RegexInjection(
-                        id = Uuid.random(),
-                        name = entry.comment.orEmpty().ifEmpty { entry.key.firstOrNull().orEmpty() },
-                        enabled = !entry.disable,
-                        priority = entry.order,
-                        position = mapSillyTavernPosition(entry.position),
-                        injectDepth = entry.depth,
-                        content = entry.content,
-                        keywords = entry.key,
-                        useRegex = false,
-                        caseSensitive = entry.caseSensitive ?: false,
-                        scanDepth = entry.scanDepth ?: 4,
-                        constantActive = entry.constant,
-                    )
-                }
+                entries = decoded.entries.map { it.copy(id = Uuid.random()) },
             )
-        }.getOrNull()
+        }
+
+        val stLorebook = runCatching {
+            ExportSerializer.DefaultJson.decodeFromString(SillyTavernLorebook.serializer(), json)
+        }.getOrElse {
+            throw IllegalArgumentException("Unsupported format")
+        }
+        val imported = Lorebook(
+            id = Uuid.random(),
+            name = fileName ?: LocalDateTime.now().toLocalString(),
+            description = "",
+            enabled = true,
+            entries = stLorebook.entries.values.map { entry ->
+                PromptInjection.RegexInjection(
+                    id = Uuid.random(),
+                    name = entry.comment.orEmpty().ifEmpty { entry.key.firstOrNull().orEmpty() },
+                    enabled = !entry.disable,
+                    priority = entry.order,
+                    position = mapSillyTavernPosition(entry.position),
+                    injectDepth = entry.depth,
+                    content = entry.content,
+                    keywords = entry.key,
+                    useRegex = false,
+                    caseSensitive = entry.caseSensitive ?: false,
+                    scanDepth = entry.scanDepth ?: 4,
+                    constantActive = entry.constant,
+                )
+            },
+        )
+        imported.entries.forEach(::validatePromptInjectionForImport)
+        return imported
     }
 
     private fun mapSillyTavernPosition(position: Int): InjectionPosition {
