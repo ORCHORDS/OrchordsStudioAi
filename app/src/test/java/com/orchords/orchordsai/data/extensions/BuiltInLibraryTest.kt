@@ -13,15 +13,17 @@ class BuiltInLibraryTest {
     @Test
     fun catalogHasCompleteDistinctContent() {
         val catalog = BuiltInLibrary.catalog
-        assertEquals(12, catalog.modes.size)
-        assertEquals(8, catalog.lorebooks.size)
-        assertEquals(24, catalog.lorebooks.sumOf { it.entries.size })
-        assertEquals(30, catalog.skills.size)
+        assertEquals(2, catalog.version)
+        validateLibraryCatalog(catalog)
+        assertEquals(24, catalog.modes.size)
+        assertEquals(16, catalog.lorebooks.size)
+        assertEquals(56, catalog.lorebooks.sumOf { it.entries.size })
+        assertEquals(60, catalog.skills.size)
         val ids = catalog.modes.map { it.id } + catalog.lorebooks.map { it.id } +
             catalog.lorebooks.flatMap { it.entries }.map { it.id }
         assertEquals(ids.size, ids.distinct().size)
         ids.forEach { assertEquals(it, UUID.fromString(it).toString()) }
-        assertEquals(30, catalog.skills.map { it.name }.distinct().size)
+        assertEquals(60, catalog.skills.map { it.name }.distinct().size)
         catalog.skills.forEach { assertTrue(it.body.length in 600..16000) }
     }
 
@@ -63,7 +65,7 @@ class BuiltInLibraryTest {
         val edited = builtIns.first().copy(body = "Keep my custom text")
         val installed = appendMissingById(listOf(edited), builtIns) { it.id }
         assertEquals(edited, installed.first())
-        assertEquals(12, installed.size)
+        assertEquals(24, installed.size)
         assertEquals(installed, appendMissingById(installed, builtIns) { it.id })
         assertEquals(1, appendMissingById(emptyList(), listOf(edited, edited)) { it.id }.size)
     }

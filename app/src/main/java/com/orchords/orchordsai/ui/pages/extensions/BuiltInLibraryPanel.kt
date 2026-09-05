@@ -60,6 +60,8 @@ fun BuiltInLibraryPanel(modifier: Modifier = Modifier) {
         ModelAbility.TOOL !in model.abilities -> R.string.tool_setup_not_marked
         else -> R.string.tool_setup_marked
     }
+    var showBrowser by remember { mutableStateOf(false) }
+    if (showBrowser) BuiltInLibraryBrowser(onDismiss = { showBrowser = false })
     var installing by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<BuiltInLibraryInstallResult?>(null) }
@@ -69,6 +71,7 @@ fun BuiltInLibraryPanel(modifier: Modifier = Modifier) {
             Text(stringResource(R.string.library_install_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.library_install_inventory, catalog.modes.size, catalog.lorebooks.size, catalog.skills.size))
             Text(stringResource(R.string.library_install_selection_notice))
+            TextButton(onClick = { showBrowser = true }) { Text(stringResource(R.string.library_browser_open)) }
             Button(
                 enabled = !settings.init && !installing,
                 onClick = {

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_browser_open">Browse modes, lorebooks and skills</string>
+    <string name="library_browser_title">Built-in library</string>
+    <string name="library_browser_notice">Preview bundled definitions. Your installed edits stay in the existing editors. Browsing does not install, select or connect anything.</string>
+    <string name="library_browser_search">Search names, topics or instructions</string>
+    <string name="library_browser_all">All</string>
+    <string name="library_browser_modes">Modes</string>
+    <string name="library_browser_lorebooks">Lorebooks</string>
+    <string name="library_browser_skills">Skills</string>
+    <string name="library_browser_count">Matching definitions: %1$d</string>
+    <string name="library_browser_empty">No matching definitions. Try another topic or category.</string>
+    <string name="library_browser_read">Read instructions</string>
+    <string name="library_browser_hide">Hide instructions</string>
+    <string name="library_browser_close">Close</string>
+</resources>
