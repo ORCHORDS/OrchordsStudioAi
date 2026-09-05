@@ -17,13 +17,11 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   queue: single
-  # Trusted main/merge-group validation must finish for its exact SHA.
-  # Pull requests are handled exclusively by pr-required-checks.yml.
   cancel-in-progress: false
 
 jobs:
-  # Post-merge/main verification stays on the dedicated warm runner.
-  test:
+  verify:
+    name: Main Verification
     runs-on: main-verification
     timeout-minutes: 30
     steps:
@@ -37,36 +35,14 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
+          # The dedicated verification runner keeps a warm Gradle user home.
+          # Avoid restoring a second Actions Gradle cache over it.
           gradle: false
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
-      - name: Run unit tests and lint
+      - name: Verify app, providers, lint and debug APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:lintDebug
-
-  assemble:
-    runs-on: main-verification
-    timeout-minutes: 30
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: recursive
-          persist-credentials: false
-          clean: false
-
-      - name: Set up build toolchain
-        uses: ./.github/actions/setup-build
-        with:
-          gradle: false
-          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
-
-      - name: Assemble debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew -PciVerify :app:assembleDebug
+          ./gradlew -PciVerify :app:testDebugUnitTest :app:lintDebug :ai:test :app:assembleDebug

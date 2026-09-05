@@ -1,9 +1,9 @@
 name: Branch Verification
 
-# Speculative verification: any branch pushed to this repository is built
-# and tested on the dedicated runner immediately, so results are usually
-# ready before a PR is opened or a human asks. Fork PRs never run here;
-# this trigger only fires for same-repository branches (trusted authors).
+# Speculative same-repository branch feedback. This is intentionally not a
+# protected required gate; pull-request validation owns full Android lint and
+# all required contexts. Hosted execution prevents speculative work from
+# starving the trusted persistent main-verification runner.
 on:
   push:
     branches-ignore:
@@ -24,11 +24,7 @@ concurrency:
 
 jobs:
   verify:
-    # Pin to the verification runner (b2) rather than the shared
-    # ubuntu-24.04-x64 label: speculative branch builds must never claim the
-    # CodeQL runner (a1) and switch its persistent workspace away from the
-    # analysis ref, which forces semi-cold rebuilds of the trusted lane.
-    runs-on: main-verification
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -36,16 +32,13 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-          clean: false
 
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
-        with:
-          gradle: false
 
-      - name: Verify branch
+      - name: Verify branch tests, providers and debug APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew -PciVerify :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+          ./gradlew --no-daemon -PciVerify :app:testDebugUnitTest :ai:test :app:assembleDebug
