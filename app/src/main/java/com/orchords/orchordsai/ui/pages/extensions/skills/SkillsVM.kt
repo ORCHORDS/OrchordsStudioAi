@@ -10,7 +10,7 @@ import com.orchords.orchordsai.data.files.PreparedSkillPackage
 import com.orchords.orchordsai.data.files.SkillImportReader
 import com.orchords.orchordsai.data.files.SkillManager
 import com.orchords.orchordsai.data.files.SkillMetadata
-import com.orchords.orchordsai.data.files.decodeSkillText
+import com.orchords.orchordsai.data.files.createSkillInstallService
 import com.orchords.orchordsai.data.files.installPreparedSkills
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +51,7 @@ class SkillsVM(
 
     fun importSkillFromFile(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
         val appContext = context.applicationContext
-        runImport(onResult) { checkpoint ->
+        runImport(source = "local:selected-file", onResult = onResult) { checkpoint ->
             checkpoint()
             val fileName = FileUtils.getFileNameFromUri(appContext, uri).orEmpty()
             val input = appContext.contentResolver.openInputStream(uri) ?: error("Cannot read the selected skill file")
@@ -60,10 +60,13 @@ class SkillsVM(
     }
 
     fun importSkillFromGitHub(repoUrl: String, onResult: (Boolean, String) -> Unit) {
-        runImport(onResult) { checkpoint -> listOf(GitHubSkillImporter().acquire(repoUrl, checkpoint)) }
+        runImport(source = repoUrl, onResult = onResult) { checkpoint ->
+            listOf(GitHubSkillImporter().acquire(repoUrl, checkpoint))
+        }
     }
 
     private fun runImport(
+        source: String,
         onResult: (Boolean, String) -> Unit,
         prepare: (() -> Unit) -> List<PreparedSkillPackage>,
     ) {
@@ -73,14 +76,11 @@ class SkillsVM(
             try {
                 val prepared = prepare(checkpoint)
                 checkpoint()
+                val installer = skillManager.createSkillInstallService()
                 val outcome = installPreparedSkills(prepared) { skill ->
                     checkpoint()
-                    // Importing plain Markdown is an edit of the root instructions, not asset deletion.
-                    if (skill.preserveAssets) {
-                        skillManager.saveSkill(skill.name, decodeSkillText(requireNotNull(skill.files["SKILL.md"]))) != null
-                    } else {
-                        skillManager.saveSkillFileBytesAtomically(skill.name, skill.files)
-                    }
+                    val proposal = installer.propose(source, skill)
+                    installer.install(proposal).installed
                 }
                 _skills.value = skillManager.listSkills()
                 val success = outcome.failed == null

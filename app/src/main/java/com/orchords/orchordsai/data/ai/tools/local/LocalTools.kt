@@ -4,6 +4,9 @@ import android.content.Context
 import com.orchords.ai.core.Tool
 import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.data.event.AppEventBus
+import com.orchords.orchordsai.data.files.AgentSkillInstallCoordinator
+import com.orchords.orchordsai.data.files.SkillManager
+import com.orchords.orchordsai.data.files.createSkillInstallService
 import com.orchords.tts.provider.TTSManager
 
 class LocalTools(
@@ -28,6 +31,13 @@ class LocalTools(
 
     val calendarCreateTool by lazy { buildCalendarCreateTool(context) }
 
+    private val skillInstallTools by lazy {
+        val skillManager = SkillManager(context.applicationContext, settingsStore)
+        buildSkillInstallTools(
+            AgentSkillInstallCoordinator(skillManager.createSkillInstallService())
+        )
+    }
+
     fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
@@ -51,6 +61,9 @@ class LocalTools(
         if (options.contains(LocalToolOption.Calendar)) {
             tools.add(calendarQueryTool)
             tools.add(calendarCreateTool)
+        }
+        if (options.contains(LocalToolOption.SkillInstaller)) {
+            tools.addAll(skillInstallTools)
         }
         return tools
     }

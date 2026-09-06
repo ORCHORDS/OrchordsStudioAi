@@ -3,6 +3,15 @@ package com.orchords.orchordsai.data.files
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal const val SKILL_INSTALL_PROVENANCE_PATH = ".orchords/provenance.json"
+private const val MAX_PROPOSAL_FILE_PREVIEW = 32
+private const val MAX_PROPOSAL_FILE_NAME_CHARS = 160
+
+internal data class SkillInstallProvenance(
+    val source: String,
+    val sourceRevision: String?,
+)
+
 /**
  * Team 2 proposal/publication boundary. Preparing a proposal never installs files.
  * Callers must obtain any required user approval before calling [install]; this
@@ -10,13 +19,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class SkillInstallService(
     private val existingSkillNames: () -> Set<String>,
-    private val installPackage: (PreparedSkillPackage) -> Boolean,
+    private val installPackage: (PreparedSkillPackage, SkillInstallProvenance) -> Boolean,
 ) {
+    constructor(
+        existingSkillNames: () -> Set<String>,
+        installPackage: (PreparedSkillPackage) -> Boolean,
+    ) : this(existingSkillNames, { prepared, _ -> installPackage(prepared) })
+
     private val owner = Any()
 
     fun propose(source: String, prepared: PreparedSkillPackage): SkillInstallProposal {
-        // Bound acquisition-owned data before copying, then validate the exact snapshot.
-        SkillPackageValidator.validate(prepared.name, prepared.files)
+        require(prepared.files.keys.none { it.equals(SKILL_INSTALL_PROVENANCE_PATH, ignoreCase = true) }) {
+            "Skill package contains a reserved ORCHORDS metadata path"
+        }
+        val metadata = SkillPackageValidator.validate(prepared.name, prepared.files)
         require(prepared.sourceRevision == null ||
             (prepared.sourceRevision.length <= 128 && prepared.sourceRevision.none { it.isISOControl() })) {
             "Invalid skill source revision"
@@ -28,6 +44,11 @@ internal class SkillInstallService(
             source = boundedSource,
             prepared = snapshot,
             replacesExisting = snapshot.name in existingSkillNames(),
+            metadata = metadata,
+            provenance = SkillInstallProvenance(
+                source = boundedSource,
+                sourceRevision = snapshot.sourceRevision,
+            ),
             owner = owner,
         )
     }
@@ -40,7 +61,7 @@ internal class SkillInstallService(
                 proposal.result(false, "destination_changed")
             } else {
                 SkillPackageValidator.validate(prepared.name, prepared.files)
-                val installed = installPackage(prepared)
+                val installed = installPackage(prepared, proposal.provenance)
                 proposal.result(installed, if (installed) null else "publication_failed")
             }
         } catch (cancelled: CancellationException) {
@@ -57,12 +78,21 @@ internal class SkillInstallProposal internal constructor(
     val source: String,
     private val prepared: PreparedSkillPackage,
     val replacesExisting: Boolean,
+    metadata: SkillPackageMetadata,
+    internal val provenance: SkillInstallProvenance,
     private val owner: Any,
 ) {
     val name: String = prepared.name
+    val description: String = metadata.description.take(500)
+    val compatibility: String? = metadata.compatibility?.take(300)
+    val disableModelInvocation: Boolean = metadata.disableModelInvocation
     val sourceRevision: String? = prepared.sourceRevision
     val fileCount: Int = prepared.files.size
     val totalBytes: Long = prepared.files.values.sumOf { it.size.toLong() }
+    val fileNames: List<String> = prepared.files.keys.sorted()
+        .take(MAX_PROPOSAL_FILE_PREVIEW)
+        .map { it.take(MAX_PROPOSAL_FILE_NAME_CHARS) }
+    val omittedFileCount: Int = (fileCount - fileNames.size).coerceAtLeast(0)
     private val consumed = AtomicBoolean(false)
 
     internal fun consume(expectedOwner: Any): PreparedSkillPackage? {

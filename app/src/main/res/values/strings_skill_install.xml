@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="assistant_page_local_tools_skill_installer_title">Skill installer</string>
+    <string name="assistant_page_local_tools_skill_installer_desc">Let this assistant propose validated public GitHub skills. Installation always requires your approval and never enables the skill automatically.</string>
+</resources>

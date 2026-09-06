@@ -9,7 +9,7 @@ class SkillInstallServiceTest {
     private val skill = PreparedSkillPackage(
         name = "sample-skill",
         files = mapOf(
-            "SKILL.md" to "---\nname: sample-skill\ndescription: Useful sample\n---\nDo useful work.\n".toByteArray(),
+            "SKILL.md" to "---\nname: sample-skill\ndescription: Useful sample\ncompatibility: OrchordsAI\ndisable-model-invocation: true\n---\nDo useful work.\n".toByteArray(),
             "reference.txt" to "bounded reference".toByteArray(),
         ),
         sourceRevision = "0123456789abcdef0123456789abcdef01234567",
@@ -29,20 +29,29 @@ class SkillInstallServiceTest {
         )
 
         assertEquals("sample-skill", proposal.name)
+        assertEquals("Useful sample", proposal.description)
+        assertEquals("OrchordsAI", proposal.compatibility)
+        assertTrue(proposal.disableModelInvocation)
         assertEquals(2, proposal.fileCount)
         assertEquals(skill.files.values.sumOf { it.size.toLong() }, proposal.totalBytes)
         assertEquals(skill.sourceRevision, proposal.sourceRevision)
         assertTrue(proposal.replacesExisting)
         assertTrue(proposal.source.length <= 240)
+        assertTrue(proposal.fileNames.contains("SKILL.md"))
         assertEquals(0, installs)
     }
 
     @Test
     fun `install is a separate operation with structured result`() {
         var installs = 0
+        var capturedProvenance: SkillInstallProvenance? = null
         val service = SkillInstallService(
             existingSkillNames = { emptySet() },
-            installPackage = { installs++; true },
+            installPackage = { _, provenance ->
+                installs++
+                capturedProvenance = provenance
+                true
+            },
         )
         val proposal = service.propose("local:selected-file", skill)
 
@@ -52,6 +61,8 @@ class SkillInstallServiceTest {
         assertFalse(result.replacedExisting)
         assertEquals("sample-skill", result.name)
         assertEquals(skill.sourceRevision, result.sourceRevision)
+        assertEquals("local:selected-file", capturedProvenance?.source)
+        assertEquals(skill.sourceRevision, capturedProvenance?.sourceRevision)
         assertEquals(1, installs)
     }
 
@@ -68,5 +79,6 @@ class SkillInstallServiceTest {
         assertFalse(result.installed)
         assertTrue(result.replacedExisting)
         assertEquals("sample-skill", result.name)
+        assertEquals("publication_failed", result.failure)
     }
 }
