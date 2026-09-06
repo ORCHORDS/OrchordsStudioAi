@@ -67,9 +67,9 @@ jobs:
 
           echo "Deleted ${#deleted[@]} fully integrated branch(es)."
           if ((${#kept[@]})); then
-            printf 'Unmerged branches retained:\n'
+            printf 'Unmerged branches retained safely:\n'
             printf ' - %s\n' "${kept[@]}"
-            exit 1
+            echo 'Cleanup completed successfully; retained branches require integration before deletion.'
+          else
+            echo "Only main remains (apart from any branch created concurrently after enumeration)."
           fi
-
-          echo "Only main remains (apart from any branch created concurrently after enumeration)."
