@@ -8,8 +8,6 @@ import com.orchords.ai.provider.CustomHeader
 import com.orchords.ai.ui.UIMessage
 import com.orchords.ai.core.ReasoningLevel
 import com.orchords.orchordsai.data.ai.tools.local.LocalToolOption
-import com.orchords.orchordsai.utils.SimpleCache
-import java.util.concurrent.TimeUnit
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -81,17 +79,6 @@ data class AssistantRegex(
     val visualOnly: Boolean = false,
 )
 
-private val regexCache = SimpleCache.builder<String, Result<Regex>>()
-    .expireAfterWrite(10, TimeUnit.MINUTES)
-    .build()
-
-private fun compileRegexCached(pattern: String): Regex? {
-    regexCache.getIfPresent(pattern)?.let { return it.getOrNull() }
-    val result = runCatching { Regex(pattern) }.onFailure { it.printStackTrace() }
-    regexCache.put(pattern, result)
-    return result.getOrNull()
-}
-
 fun String.replaceRegexes(
     assistant: Assistant?,
     scope: AssistantAffectScope,
@@ -99,22 +86,18 @@ fun String.replaceRegexes(
 ): String {
     if (assistant == null) return this
     if (assistant.regexes.isEmpty()) return this
-    return assistant.regexes.fold(this) { acc, regex ->
-        if (regex.enabled && regex.visualOnly == visual && regex.affectingScope.contains(scope)) {
-            val compiled = compileRegexCached(regex.findRegex) ?: return@fold acc
-            try {
-                acc.replace(
-                    regex = compiled,
-                    replacement = regex.replaceString,
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
-                acc
-            }
-        } else {
-            acc
+    return assistant.regexes.asSequence()
+        .filter { regex ->
+            regex.enabled && regex.visualOnly == visual && regex.affectingScope.contains(scope)
         }
-    }
+        .take(SafeRegexPolicy.MAX_TRANSFORMS)
+        .fold(this) { acc, regex ->
+            SafeRegexPolicy.replaceAll(
+                pattern = regex.findRegex,
+                input = acc,
+                replacement = regex.replaceString,
+            )
+        }
 }
 
 /**
@@ -210,12 +193,11 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
         // Empty imported/editor rows must not turn into implicit constant-active entries.
         if (keyword.isBlank()) return@any false
         if (useRegex) {
-            try {
-                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                Regex(keyword, options).containsMatchIn(context)
-            } catch (e: Exception) {
-                false
-            }
+            SafeRegexPolicy.containsMatch(
+                pattern = keyword,
+                input = context,
+                caseSensitive = caseSensitive,
+            )
         } else {
             if (caseSensitive) {
                 context.contains(keyword)

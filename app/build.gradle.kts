@@ -263,6 +263,9 @@ dependencies {
     // Apache Commons Text
     implementation(libs.commons.text)
 
+    // Linear-time engine for user-configurable regexes (#259)
+    implementation("com.google.re2j:re2j:1.8")
+
     // Toast (Sonner)
     implementation(libs.sonner)
 
