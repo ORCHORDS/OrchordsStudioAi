@@ -19,10 +19,8 @@ class StartupPresentationPolicyTest {
 
     @Test
     fun `activity owns exactly one startup loading indicator host`() {
-        val source = activitySource()
-        val renderedHosts = Regex("(?m)^\\s*OrchordsStartupLoadingIndicator\\(")
-            .findAll(source)
-            .count()
+        val activityBody = activitySource().substringAfter("class OrchordsAiActivity")
+        val renderedHosts = activityBody.split("OrchordsStartupLoadingIndicator(").size - 1
 
         assertEquals(
             "Startup and migration readiness must share one rendered full-screen loader host; found $renderedHosts",
