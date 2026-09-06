@@ -1,7 +1,11 @@
 package com.orchords.ai.provider
 
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import okio.BufferedSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -27,6 +31,25 @@ class ProviderIngressPolicyTest {
     }
 
     @Test
+    fun `unknown length response is bounded by observed bytes`() {
+        val bounded = unknownLengthBody("abcdef").withProviderByteLimit(5)
+
+        val error = assertThrows(ProviderPayloadTooLargeException::class.java) {
+            bounded.string()
+        }
+
+        assertEquals(5L, error.limitBytes)
+        assertEquals(6L, error.observedBytes)
+    }
+
+    @Test
+    fun `unknown length response at exact observed byte limit is accepted`() {
+        val bounded = unknownLengthBody("hello").withProviderByteLimit(5)
+
+        assertEquals("hello", bounded.string())
+    }
+
+    @Test
     fun `SSE ASCII payload over byte limit is rejected`() {
         assertThrows(ProviderPayloadTooLargeException::class.java) {
             requireProviderSseEventWithinLimit("abcdef", maxBytes = 5)
@@ -47,5 +70,11 @@ class ProviderIngressPolicyTest {
     @Test
     fun `SSE exact byte limit is accepted`() {
         requireProviderSseEventWithinLimit("12345678", maxBytes = 8)
+    }
+
+    private fun unknownLengthBody(content: String): ResponseBody = object : ResponseBody() {
+        override fun contentType(): MediaType = "application/json".toMediaType()
+        override fun contentLength(): Long = -1L
+        override fun source(): BufferedSource = Buffer().writeUtf8(content)
     }
 }
