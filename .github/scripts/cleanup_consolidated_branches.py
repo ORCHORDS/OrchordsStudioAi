@@ -32,6 +32,10 @@ EXPECTED.update({
 })
 
 
+class StaleVerifiedMain(RuntimeError):
+    """A successful older verification was superseded by a newer main head."""
+
+
 def git(*args):
     return subprocess.run(["git", *args], check=True, text=True, capture_output=True).stdout.strip()
 
@@ -50,7 +54,7 @@ def ancestor(older, newer):
 
 def select_candidates(heads, verified, expected, integration_branch, integration_root):
     if heads.get("main") != verified:
-        raise RuntimeError("main moved; wait for verification of the new head")
+        raise StaleVerifiedMain("main moved; wait for verification of the new head")
     if "main" in expected or integration_branch == "main":
         raise RuntimeError("main is never a deletion candidate")
     candidates = {}
@@ -96,7 +100,7 @@ def main():
     before = inventory()
     candidates = select_candidates(before, verified, EXPECTED, INTEGRATION_BRANCH, INTEGRATION_ROOT)
     if inventory().get("main") != verified:
-        raise RuntimeError("main moved during the audit")
+        raise StaleVerifiedMain("main moved during the audit")
     delete_candidates(candidates)
     after = inventory()
     remaining = sorted(name for name in after if name != "main")
@@ -113,6 +117,13 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except StaleVerifiedMain as error:
+        # A newer main commit will receive its own Main Verification and cleanup
+        # trigger. This older verified run performed no deletion and is not a
+        # repository failure, so report a neutral successful skip instead of a
+        # misleading red workflow.
+        print(f"Branch cleanup skipped safely: {error}")
+        sys.exit(0)
     except (RuntimeError, subprocess.CalledProcessError) as error:
         print(f"Branch cleanup stopped safely: {error}", file=sys.stderr)
         sys.exit(1)

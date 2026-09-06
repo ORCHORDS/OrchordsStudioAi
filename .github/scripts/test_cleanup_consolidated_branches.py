@@ -60,8 +60,8 @@ class CleanupSafetyTests(unittest.TestCase):
             self.choose({'old-a': self.main})
         self.assertEqual(3, len(cleanup.inventory()))
 
-    def test_moved_main_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, 'main moved'):
+    def test_moved_main_is_classified_as_stale_verified_run(self):
+        with self.assertRaisesRegex(cleanup.StaleVerifiedMain, 'main moved'):
             self.choose(verified=self.base)
 
     def test_unmerged_head_rejected(self):

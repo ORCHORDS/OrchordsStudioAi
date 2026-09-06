@@ -105,6 +105,69 @@ class OpenAIChatToolResultPolicyProviderTest {
     }
 
     @Test(timeout = 5_000)
+    fun `MCP workspace and generated image results share the same Chat protocol lowering`() = runBlocking {
+        val origins = listOf(
+            "mcp__image-server__read_image",
+            "workspace_read_file",
+            "generate_image",
+        )
+
+        origins.forEachIndexed { index, toolName ->
+            var received: List<UIMessage>? = null
+            val delegate = object : Provider<ProviderSetting.OpenAI> {
+                override suspend fun listModels(providerSetting: ProviderSetting.OpenAI) = emptyList<Model>()
+                override suspend fun generateText(
+                    providerSetting: ProviderSetting.OpenAI,
+                    messages: List<UIMessage>,
+                    params: TextGenerationParams,
+                ): TextGenerationResult {
+                    received = messages
+                    return TextGenerationResult("id-$index", params.model.modelId, UIMessage.assistant("ok"))
+                }
+                override suspend fun streamText(
+                    providerSetting: ProviderSetting.OpenAI,
+                    messages: List<UIMessage>,
+                    params: TextGenerationParams,
+                ): Flow<StreamChunk> = emptyFlow()
+            }
+            val wrapper = OpenAIChatToolResultPolicyProvider(delegate)
+            val callId = "call-$index"
+            val canonical = UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(
+                    UIMessagePart.Tool(
+                        toolCallId = callId,
+                        toolName = toolName,
+                        input = "{}",
+                        output = listOf(UIMessagePart.Image("data:image/png;base64,ORIGIN$index")),
+                    )
+                ),
+            )
+
+            wrapper.generateText(
+                ProviderSetting.OpenAI(useResponseApi = false),
+                listOf(canonical),
+                TextGenerationParams(model = imageModel),
+            )
+
+            val requestView = received ?: error("delegate did not receive request messages")
+            assertEquals(2, requestView.size)
+            val loweredTool = requestView.first().parts.filterIsInstance<UIMessagePart.Tool>().single()
+            assertEquals(callId, loweredTool.toolCallId)
+            assertEquals(toolName, loweredTool.toolName)
+            assertTrue(loweredTool.output.all { it is UIMessagePart.Text })
+            val mediaFollowup = requestView.last()
+            assertEquals(MessageRole.USER, mediaFollowup.role)
+            assertTrue(mediaFollowup.isSynthetic)
+            assertEquals(1, mediaFollowup.parts.filterIsInstance<UIMessagePart.Image>().size)
+
+            // Provider lowering never mutates canonical product history.
+            assertTrue(canonical.parts.filterIsInstance<UIMessagePart.Tool>().single().output
+                .any { it is UIMessagePart.Image })
+        }
+    }
+
+    @Test(timeout = 5_000)
     fun `responses path preserves canonical rich tool result`() = runBlocking {
         var received: List<UIMessage>? = null
         val delegate = object : Provider<ProviderSetting.OpenAI> {
