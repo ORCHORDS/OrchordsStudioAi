@@ -116,7 +116,7 @@ class MessageNodePayloadStoreTest {
 
     @Test
     fun boundaryAtExactThresholdIsInline() = runBlocking {
-        val json = "[".padEnd(MessageNodePayloadStore.MAX_INLINE_BYTES, 'x') + "]"
+        val json = buildLargeJson(MessageNodePayloadStore.MAX_INLINE_BYTES)
         assertEquals(
             MessageNodePayloadStore.MAX_INLINE_BYTES.toLong(),
             json.toByteArray(Charsets.UTF_8).size.toLong(),
@@ -126,7 +126,7 @@ class MessageNodePayloadStoreTest {
 
     @Test
     fun boundaryOneOverThresholdIsExternalized() = runBlocking {
-        val json = "[".padEnd(MessageNodePayloadStore.MAX_INLINE_BYTES + 1, 'x') + "]"
+        val json = buildLargeJson(MessageNodePayloadStore.MAX_INLINE_BYTES + 1)
         assertNotNull(store.store(nodeId("over"), json))
     }
 
