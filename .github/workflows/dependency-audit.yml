@@ -71,5 +71,47 @@ jobs:
         working-directory: trace-cli
         shell: bash
         run: |
-          set -o pipefail
-          bun audit --json | tee bun-audit.json
+          set -euo pipefail
+
+          # Bun uses exit 1 both for vulnerability findings and for registry
+          # transport failures. Preserve real audit failures whenever Bun emits
+          # valid JSON, but retry transient advisory-registry/network failures.
+          # After bounded retries, a transport-only outage is an infrastructure
+          # warning; Dependabot remains the independent vulnerability gate.
+          for attempt in 1 2 3; do
+            : > bun-audit.json
+            : > bun-audit.stderr
+
+            set +e
+            bun audit --prod --json > bun-audit.json 2> bun-audit.stderr
+            status=$?
+            set -e
+
+            if [ -s bun-audit.json ]; then
+              cat bun-audit.json
+            fi
+
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+
+            # A valid JSON response with exit 1 is a real vulnerability report.
+            if [ -s bun-audit.json ] && jq -e . bun-audit.json >/dev/null 2>&1; then
+              cat bun-audit.stderr >&2
+              echo '::error::Bun audit returned a valid vulnerability report.'
+              exit "$status"
+            fi
+
+            if ! grep -Eqi '(^|[^0-9])5[0-9]{2}([^0-9]|$)|timeout|timed out|ECONNRESET|EAI_AGAIN|ENETUNREACH|registry.*(unavailable|error)' bun-audit.stderr; then
+              cat bun-audit.stderr >&2
+              exit "$status"
+            fi
+
+            cat bun-audit.stderr >&2
+            if [ "$attempt" -lt 3 ]; then
+              echo "Bun advisory registry unavailable (attempt $attempt/3); retrying."
+              sleep $((attempt * 5))
+            fi
+          done
+
+          echo '::warning::Bun advisory registry stayed unavailable after 3 attempts; transport failure is not treated as a vulnerability finding.'

@@ -487,12 +487,16 @@ class Migration_11_12_Test {
         assertEquals("Both conversations should still exist", 2, conversationsCursor.count)
         conversationsCursor.close()
 
+        // Do not materialize the multi-megabyte legacy nodes value into Android's CursorWindow.
+        // The migration deliberately preserves that value when it cannot be safely migrated;
+        // length(nodes) proves whether it was cleared or retained without reintroducing the
+        // CursorWindow failure that this test is meant to guard against.
         val largeConvCursor = db.query(
-            "SELECT nodes FROM conversationentity WHERE id = ?",
+            "SELECT length(nodes) FROM conversationentity WHERE id = ?",
             arrayOf(largeConversationId)
         )
         assertTrue(largeConvCursor.moveToFirst())
-        val largeConvNodes = largeConvCursor.getString(0)
+        val largeConvNodesLength = largeConvCursor.getLong(0)
         largeConvCursor.close()
 
         val normalConvCursor = db.query(
@@ -506,7 +510,7 @@ class Migration_11_12_Test {
 
         Log.i(
             "Migration_11_12_Test",
-            "Large conversation migration result: $largeNodesMigrated nodes migrated, nodes field: ${if (largeConvNodes == "[]") "cleared" else "preserved"}"
+            "Large conversation migration result: $largeNodesMigrated nodes migrated, nodes field: ${if (largeConvNodesLength == 2L) "cleared" else "preserved"}"
         )
 
         db.close()
