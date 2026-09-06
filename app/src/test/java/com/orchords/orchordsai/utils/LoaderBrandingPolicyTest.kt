@@ -103,10 +103,13 @@ class LoaderBrandingPolicyTest {
                 player.contains("if (!started.compareAndSet(false, true)) return") &&
                 player.contains("track.release()"),
         )
+        val startupHost = activity.substringAfter(
+            "visible = showStartup || migrationState is MigrationState.Migrating",
+            missingDelimiterValue = "",
+        ).substringBefore("private fun disableNavigationBarContrast")
         assertTrue(
-            "Migration overlay must render the branded startup loader instead of a bare spinner",
-            activity.contains("OrchardsStartupLoadingIndicator(") &&
-                !activity.contains("CircularProgressIndicator()"),
+            "Startup and migration readiness must use the branded Activity-owned loader host",
+            startupHost.contains("OrchordsStartupLoadingIndicator("),
         )
         val startup = source("src/main/java/com/orchords/orchordsai/ui/components/ui/OrchordsStartupLoading.kt")
         assertTrue(
@@ -164,14 +167,16 @@ class LoaderBrandingPolicyTest {
         )
         val activity = source("src/main/java/com/orchords/orchordsai/OrchordsAiActivity.kt")
         assertTrue(
-            "installSplashScreen() must run as the first statement of onCreate, before super.onCreate()",
+            "installSplashScreen() must run before super.onCreate()",
             activity.indexOf("installSplashScreen()") in 0 until activity.indexOf("super.onCreate(savedInstanceState)"),
         )
         assertTrue(
-            "Cold starts retain the branded host and its readiness completion callback",
+            "Cold starts retain one branded host and a migration-aware readiness completion callback",
             activity.contains("mutableStateOf(savedInstanceState == null)") &&
-                activity.contains("OrchardsStartupLoadingIndicator(") &&
-                activity.contains("onFinished = { showStartup = false }"),
+                activity.contains("visible = showStartup || migrationState is MigrationState.Migrating") &&
+                activity.substringAfter("class OrchordsAiActivity").split("OrchordsStartupLoadingIndicator(").size - 1 == 1 &&
+                activity.contains("if (migrationState !is MigrationState.Migrating)") &&
+                activity.contains("showStartup = false"),
         )
     }
 
