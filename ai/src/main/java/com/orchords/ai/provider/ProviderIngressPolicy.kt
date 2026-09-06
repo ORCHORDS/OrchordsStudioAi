@@ -68,14 +68,24 @@ internal fun requireProviderSseEventWithinLimit(
     }
 }
 
-internal class ProviderIngressInterceptor : Interceptor {
+internal class ProviderIngressInterceptor(
+    private val jsonBodyLimitBytes: Long = MAX_PROVIDER_JSON_BODY_BYTES,
+    private val errorBodyLimitBytes: Long = MAX_PROVIDER_ERROR_BODY_BYTES,
+    private val streamBodyLimitBytes: Long = MAX_PROVIDER_STREAM_BODY_BYTES,
+) : Interceptor {
+    init {
+        require(jsonBodyLimitBytes > 0L) { "jsonBodyLimitBytes must be positive" }
+        require(errorBodyLimitBytes > 0L) { "errorBodyLimitBytes must be positive" }
+        require(streamBodyLimitBytes > 0L) { "streamBodyLimitBytes must be positive" }
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
         val body = response.body ?: return response
         val maxBytes = when {
-            !response.isSuccessful -> MAX_PROVIDER_ERROR_BODY_BYTES
-            body.contentType()?.isEventStream() == true -> MAX_PROVIDER_STREAM_BODY_BYTES
-            else -> MAX_PROVIDER_JSON_BODY_BYTES
+            !response.isSuccessful -> errorBodyLimitBytes
+            body.contentType()?.isEventStream() == true -> streamBodyLimitBytes
+            else -> jsonBodyLimitBytes
         }
         return try {
             response.newBuilder()

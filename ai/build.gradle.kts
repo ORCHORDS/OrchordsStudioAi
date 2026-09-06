@@ -49,6 +49,7 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.5.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
