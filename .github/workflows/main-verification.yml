@@ -32,16 +32,20 @@ jobs:
           persist-credentials: false
           clean: false
 
-      - name: Set up build toolchain
-        uses: ./.github/actions/setup-build
-        with:
-          # Android/provider verification does not build web-ui. Avoid pnpm
-          # verification/install work on the dedicated runner.
-          web: false
-          # The dedicated verification runner keeps a warm Gradle user home.
-          # Avoid restoring a second Actions Gradle cache over it.
-          gradle: false
-          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
+      - name: Verify dedicated Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          java_bin="$(readlink -f "$(command -v java)")"
+          java_version="$("$java_bin" -version 2>&1 | head -n1)"
+          printf '%s\n' "$java_version"
+          printf '%s\n' "$java_version" | grep -Eq 'version "21([.]|\")' || {
+            echo "::error::Java 21 is required on the dedicated verification runner"
+            exit 1
+          }
+          java_home="$(dirname "$(dirname "$java_bin")")"
+          echo "JAVA_HOME=$java_home" >> "$GITHUB_ENV"
+          echo "$java_home/bin" >> "$GITHUB_PATH"
 
       - name: Verify app, providers, lint and debug APK
         shell: bash
