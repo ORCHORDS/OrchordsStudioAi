@@ -409,9 +409,11 @@ class ChatCompletionsAPI(
                     }
 
                     else -> {
-                        if (level != ReasoningLevel.AUTO) {
-                            val effort = normalizeDeepSeekCompatibleReasoningEffort(params.model.modelId, level)
-                            put("reasoning_effort", if (effort == "none") "low" else effort)
+                        if (level != ReasoningLevel.AUTO && level != ReasoningLevel.OFF) {
+                            put(
+                                "reasoning_effort",
+                                normalizeDeepSeekCompatibleReasoningEffort(params.model.modelId, level),
+                            )
                         }
                     }
                 }
