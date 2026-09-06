@@ -29,6 +29,8 @@ internal suspend fun appendLibraryContent(
         )
         val mergedModes = appendMissingById(currentModes, modes) { it.id.toString() }
         val mergedBooks = appendMissingById(currentBooks, lorebooks) { it.id.toString() }
+        validateModeInjectionsForPersistence(mergedModes)
+        validateLorebooksForPersistence(mergedBooks)
         preferences[SettingsStore.MODE_INJECTIONS] = JsonInstant.encodeToString(mergedModes)
         preferences[SettingsStore.LOREBOOKS] = JsonInstant.encodeToString(mergedBooks)
         receipt = LibraryContentReceipt(mergedModes.size - currentModes.size, mergedBooks.size - currentBooks.size)
@@ -53,6 +55,7 @@ internal suspend fun updateModeInjections(
         require(updated.map { it.id }.distinct().size == updated.size) {
             "Mode injection IDs must be unique"
         }
+        validateModeInjectionsForPersistence(updated)
         preferences[SettingsStore.MODE_INJECTIONS] = JsonInstant.encodeToString(updated)
     }
 }
@@ -73,6 +76,7 @@ internal suspend fun updateLorebooks(
         require(updated.map { it.id }.distinct().size == updated.size) {
             "Lorebook IDs must be unique"
         }
+        validateLorebooksForPersistence(updated)
         preferences[SettingsStore.LOREBOOKS] = JsonInstant.encodeToString(updated)
     }
 }
