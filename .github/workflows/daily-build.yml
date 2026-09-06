@@ -71,6 +71,9 @@ jobs:
         if: steps.check.outputs.should_build == 'true'
         uses: ./.github/actions/setup-build
         with:
+          # APK publication does not build web-ui; keep the shared runner on
+          # the Android/Gradle critical path only.
+          web: false
           gradle: false
 
       - name: Select build mode
