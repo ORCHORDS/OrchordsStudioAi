@@ -2,7 +2,7 @@ package com.orchords.ai.provider.providers.openai
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import com.orchords.ai.core.MessageRole
 import com.orchords.ai.provider.Model
 import com.orchords.ai.provider.ModelAbility
@@ -105,7 +105,7 @@ class OpenAIChatToolResultPolicyProviderTest {
     }
 
     @Test
-    fun `responses path preserves canonical rich tool result`() = runTest {
+    fun `responses path preserves canonical rich tool result`() = runBlocking {
         var received: List<UIMessage>? = null
         val delegate = object : Provider<ProviderSetting.OpenAI> {
             override suspend fun listModels(providerSetting: ProviderSetting.OpenAI) = emptyList<Model>()
