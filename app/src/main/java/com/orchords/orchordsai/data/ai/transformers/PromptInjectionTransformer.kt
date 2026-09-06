@@ -40,14 +40,17 @@ internal fun transformMessages(
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
 ): List<UIMessage> {
-    val injections = collectInjections(
-        messages = messages,
-        assistant = assistant,
-        modeInjections = modeInjections,
-        lorebooks = lorebooks,
-        conversationModeInjectionIds = conversationModeInjectionIds,
-        conversationLorebookIds = conversationLorebookIds,
+    val budgeted = selectBudgetedInjections(
+        collectInjectionCandidates(
+            messages = messages,
+            assistant = assistant,
+            modeInjections = modeInjections,
+            lorebooks = lorebooks,
+            conversationModeInjectionIds = conversationModeInjectionIds,
+            conversationLorebookIds = conversationLorebookIds,
+        )
     )
+    val injections = budgeted.injections
 
     if (injections.isEmpty()) {
         return messages
@@ -55,8 +58,8 @@ internal fun transformMessages(
 
     injections.forEach { requireSupportedInjectionRole(it.position, it.role) }
 
-    // Priority is authoritative. UUID provides a stable secondary key so equal-priority
-    // imports produce the same order regardless of collection/list reconstruction order.
+    // The budget selector already retained candidates in authoritative priority/UUID order.
+    // Sorting this bounded list again keeps applyInjections independently deterministic.
     val byPosition = injections
         .sortedWith(
             compareByDescending<PromptInjection> { it.priority }
@@ -68,6 +71,9 @@ internal fun transformMessages(
 }
 
 /**
+ * Compatibility/test seam that exposes the active set without applying the production
+ * materialization budget. Production transformMessages streams candidates directly into
+ * selectBudgetedInjections so it never allocates an unbounded active-injection list.
  */
 internal fun collectInjections(
     messages: List<UIMessage>,
@@ -76,8 +82,23 @@ internal fun collectInjections(
     lorebooks: List<Lorebook>,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
-): List<PromptInjection> {
-    val injections = mutableListOf<PromptInjection>()
+): List<PromptInjection> = collectInjectionCandidates(
+    messages = messages,
+    assistant = assistant,
+    modeInjections = modeInjections,
+    lorebooks = lorebooks,
+    conversationModeInjectionIds = conversationModeInjectionIds,
+    conversationLorebookIds = conversationLorebookIds,
+).toList()
+
+private fun collectInjectionCandidates(
+    messages: List<UIMessage>,
+    assistant: Assistant,
+    modeInjections: List<PromptInjection.ModeInjection>,
+    lorebooks: List<Lorebook>,
+    conversationModeInjectionIds: Set<Uuid>,
+    conversationLorebookIds: Set<Uuid>,
+): Sequence<PromptInjection> = sequence {
     val effectiveModeInjectionIds = if (assistant.allowConversationPromptInjection) {
         conversationModeInjectionIds
     } else {
@@ -89,27 +110,23 @@ internal fun collectInjections(
         assistant.lorebookIds
     }
 
-    modeInjections
-        .filter { it.enabled && effectiveModeInjectionIds.contains(it.id) }
-        .forEach { injections.add(it) }
-
-    val enabledLorebooks = lorebooks.filter {
-        it.enabled && effectiveLorebookIds.contains(it.id)
-    }
-    if (enabledLorebooks.isNotEmpty()) {
-        val nonSystemMessages = messages.filter { it.role != MessageRole.SYSTEM }
-
-        enabledLorebooks.forEach { lorebook ->
-            lorebook.entries
-                .filter { entry ->
-                    val context = extractContextForMatching(nonSystemMessages, entry.scanDepth)
-                    entry.isTriggered(context)
-                }
-                .forEach { injections.add(it) }
+    modeInjections.forEach { injection ->
+        if (injection.enabled && effectiveModeInjectionIds.contains(injection.id)) {
+            yield(injection)
         }
     }
 
-    return injections
+    lorebooks.forEach { lorebook ->
+        if (!lorebook.enabled || !effectiveLorebookIds.contains(lorebook.id)) {
+            return@forEach
+        }
+        lorebook.entries.forEach { entry ->
+            val context = extractContextForMatching(messages, entry.scanDepth)
+            if (entry.isTriggered(context)) {
+                yield(entry)
+            }
+        }
+    }
 }
 
 /**
