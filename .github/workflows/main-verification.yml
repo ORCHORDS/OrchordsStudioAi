@@ -35,6 +35,9 @@ jobs:
       - name: Set up build toolchain
         uses: ./.github/actions/setup-build
         with:
+          # Android/provider verification does not build web-ui. Avoid pnpm
+          # verification/install work on the dedicated runner.
+          web: false
           # The dedicated verification runner keeps a warm Gradle user home.
           # Avoid restoring a second Actions Gradle cache over it.
           gradle: false
