@@ -105,7 +105,7 @@ class LoaderBrandingPolicyTest {
         )
         assertTrue(
             "Migration overlay must render the branded startup loader instead of a bare spinner",
-            activity.contains("OrchardsStartupLoadingIndicator(") &&
+            activity.contains("OrchordsStartupLoadingIndicator(") &&
                 !activity.contains("CircularProgressIndicator()"),
         )
         val startup = source("src/main/java/com/orchords/orchordsai/ui/components/ui/OrchordsStartupLoading.kt")
@@ -168,10 +168,11 @@ class LoaderBrandingPolicyTest {
             activity.indexOf("installSplashScreen()") in 0 until activity.indexOf("super.onCreate(savedInstanceState)"),
         )
         assertTrue(
-            "Cold starts retain the branded host and its readiness completion callback",
+            "Cold starts retain the branded host and a migration-aware readiness completion callback",
             activity.contains("mutableStateOf(savedInstanceState == null)") &&
-                activity.contains("OrchardsStartupLoadingIndicator(") &&
-                activity.contains("onFinished = { showStartup = false }"),
+                activity.contains("OrchordsStartupLoadingIndicator(") &&
+                activity.contains("if (migrationState !is MigrationState.Migrating)") &&
+                activity.contains("showStartup = false"),
         )
     }
 
