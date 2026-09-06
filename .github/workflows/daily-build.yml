@@ -67,14 +67,21 @@ jobs:
           persist-credentials: false
           clean: false
 
-      - name: Set up build toolchain
+      - name: Verify dedicated Android toolchain
         if: steps.check.outputs.should_build == 'true'
-        uses: ./.github/actions/setup-build
-        with:
-          # APK publication does not build web-ui; keep the shared runner on
-          # the Android/Gradle critical path only.
-          web: false
-          gradle: false
+        shell: bash
+        run: |
+          set -euo pipefail
+          java_bin="$(readlink -f "$(command -v java)")"
+          java_version="$("$java_bin" -version 2>&1 | head -n1)"
+          printf '%s\n' "$java_version"
+          printf '%s\n' "$java_version" | grep -Eq 'version "21([.]|\")' || {
+            echo "::error::Java 21 is required on the dedicated nightly runner"
+            exit 1
+          }
+          java_home="$(dirname "$(dirname "$java_bin")")"
+          echo "JAVA_HOME=$java_home" >> "$GITHUB_ENV"
+          echo "$java_home/bin" >> "$GITHUB_PATH"
 
       - name: Select build mode
         if: steps.check.outputs.should_build == 'true'
