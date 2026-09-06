@@ -18,10 +18,20 @@ class ProviderManager(client: OkHttpClient, context: Context) {
     init {
         registerProvider(
             "openai",
-            OpenAIChatToolResultPolicyProvider(OpenAIProvider(providerClient, context)),
+            ToolAliasingProvider(
+                OpenAIChatToolResultPolicyProvider(
+                    OpenAIProvider(providerClient, context),
+                )
+            ),
         )
-        registerProvider("google", GoogleProvider(providerClient, context))
-        registerProvider("claude", ClaudeProvider(providerClient, context))
+        registerProvider(
+            "google",
+            ToolAliasingProvider(GoogleProvider(providerClient, context)),
+        )
+        registerProvider(
+            "claude",
+            ToolAliasingProvider(ClaudeProvider(providerClient, context)),
+        )
     }
 
     /**

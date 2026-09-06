@@ -29,9 +29,36 @@ import com.orchords.orchordsai.data.files.FilesManager
 import com.orchords.orchordsai.data.files.saveUploadFromBytes
 import com.orchords.orchordsai.utils.JsonInstant
 import okhttp3.OkHttpClient
+import java.math.BigInteger
 import java.util.concurrent.TimeUnit
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+
+/**
+ * Produces an ASCII-alphanumeric, collision-free server namespace for canonical MCP tool identity.
+ *
+ * The readable prefix keeps diagnostics/tool UI recognizable, while the full UUID encoded in
+ * base36 prevents two servers with the same display name from collapsing into one executable name.
+ * Stored MCP display names and remote tool names are never modified.
+ */
+internal fun canonicalMcpServerToolNamespace(
+    serverId: Uuid,
+    displayName: String,
+): String {
+    val readable = displayName
+        .filter { ch ->
+            ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9'
+        }
+        .take(MCP_CANONICAL_READABLE_CHARS)
+        .ifEmpty { "server" }
+
+    val uuidHex = serverId.toString().replace("-", "")
+    val stableId = BigInteger(uuidHex, 16)
+        .toString(36)
+        .padStart(MCP_UUID_BASE36_CHARS, '0')
+
+    return "${readable}Z$stableId"
+}
 
 /**
  *
@@ -106,9 +133,13 @@ class McpManager(
         return settings.mcpServers
             .filter { it.commonOptions.enable && it.id in assistant.mcpServers }
             .flatMap { server ->
+                val canonicalServerNamespace = canonicalMcpServerToolNamespace(
+                    serverId = server.id,
+                    displayName = server.commonOptions.name,
+                )
                 server.commonOptions.tools
                     .filter { tool -> tool.enable }
-                    .map { tool -> Triple(server.id, server.commonOptions.name, tool) }
+                    .map { tool -> Triple(server.id, canonicalServerNamespace, tool) }
             }
     }
 
@@ -160,3 +191,6 @@ class McpManager(
         return UIMessagePart.Image(url = filesManager.getFile(entity).toUri().toString())
     }
 }
+
+private const val MCP_CANONICAL_READABLE_CHARS = 18
+private const val MCP_UUID_BASE36_CHARS = 25

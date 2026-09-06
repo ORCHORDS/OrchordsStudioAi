@@ -7,9 +7,14 @@ import org.junit.Test
 
 class ToolAliasPolicyTest {
     @Test
-    fun `DeepSeek chat and responses use their documented route-specific name ceilings`() {
+    fun `route policies keep documented and conservative ceilings distinct`() {
+        assertEquals(64, ToolNamePolicy.OPENAI_CHAT.maxLength)
+        assertEquals(64, ToolNamePolicy.OPENAI_RESPONSES.maxLength)
+        assertEquals(64, ToolNamePolicy.OPENAI_COMPATIBLE.maxLength)
         assertEquals(64, ToolNamePolicy.DEEPSEEK_CHAT.maxLength)
         assertEquals(128, ToolNamePolicy.DEEPSEEK_RESPONSES.maxLength)
+        assertEquals(128, ToolNamePolicy.GEMINI.maxLength)
+        assertEquals(64, ToolNamePolicy.CLAUDE.maxLength)
     }
 
     @Test
@@ -27,6 +32,7 @@ class ToolAliasPolicyTest {
             "mcp__My MCP__files.read",
             "mcp/server/files/read",
             "文件.读取",
+            "tool/😀/read",
         )
         val aliases = buildProviderToolAliases(names, ToolNamePolicy.DEEPSEEK_CHAT)
 
@@ -51,6 +57,24 @@ class ToolAliasPolicyTest {
     }
 
     @Test
+    fun `safe canonical names are reserved before generated aliases`() {
+        val unsafe = "files.read"
+        val generatedWhenAlone = buildProviderToolAliases(
+            listOf(unsafe),
+            ToolNamePolicy.DEEPSEEK_CHAT,
+        ).getValue(unsafe)
+
+        val aliases = buildProviderToolAliases(
+            listOf(unsafe, generatedWhenAlone),
+            ToolNamePolicy.DEEPSEEK_CHAT,
+        )
+
+        assertEquals(generatedWhenAlone, aliases.getValue(generatedWhenAlone))
+        assertNotEquals(aliases.getValue(unsafe), aliases.getValue(generatedWhenAlone))
+        assertEquals(aliases.size, aliases.values.toSet().size)
+    }
+
+    @Test
     fun `long common prefixes are bounded without alias collision`() {
         val prefix = "a".repeat(180)
         val first = "$prefix-one"
@@ -60,5 +84,22 @@ class ToolAliasPolicyTest {
         assertTrue(aliases.getValue(first).length <= 128)
         assertTrue(aliases.getValue(second).length <= 128)
         assertNotEquals(aliases.getValue(first), aliases.getValue(second))
+    }
+
+    @Test
+    fun `aliases remain deterministic and unique across a large hostile set`() {
+        val names = buildList {
+            repeat(200) { index ->
+                add("mcp__同じ server/$index/" + "x".repeat(180))
+            }
+        }
+        val aliases = buildProviderToolAliases(names, ToolNamePolicy.CLAUDE)
+
+        assertEquals(names.size, aliases.size)
+        assertEquals(names.size, aliases.values.toSet().size)
+        aliases.values.forEach { alias ->
+            assertTrue(alias.length <= 64)
+            assertTrue(alias.matches(Regex("[A-Za-z0-9_-]+")))
+        }
     }
 }
