@@ -90,6 +90,7 @@ import com.orchords.orchordsai.data.export.rememberImporter
 import com.orchords.orchordsai.data.model.InjectionPosition
 import com.orchords.orchordsai.data.model.Lorebook
 import com.orchords.orchordsai.data.model.PromptInjection
+import com.orchords.orchordsai.data.model.parseLorebookScanDepthOrNull
 import com.orchords.orchordsai.ui.components.nav.BackButton
 import com.orchords.orchordsai.ui.components.ui.ExportDialog
 import com.orchords.orchordsai.ui.components.ui.FormItem
@@ -1143,7 +1144,7 @@ private fun RegexInjectionEditDialog(
                 OutlinedTextField(
                     value = entry.scanDepth.toString(),
                     onValueChange = {
-                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(scanDepth = d)) }
+                        parseLorebookScanDepthOrNull(it)?.let { d -> onEdit(entry.copy(scanDepth = d)) }
                     },
                     label = { Text(stringResource(R.string.prompt_page_scan_depth)) },
                     modifier = Modifier.fillMaxWidth(),
