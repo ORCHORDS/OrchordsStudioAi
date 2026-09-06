@@ -12,6 +12,7 @@ import com.orchords.orchordsai.data.files.SkillPaths
 import com.orchords.orchordsai.data.datastore.Settings
 import com.orchords.orchordsai.data.datastore.SettingsStore
 import com.orchords.orchordsai.data.datastore.WebDavConfig
+import com.orchords.orchordsai.data.datastore.validateSettingsPromptContent
 import com.orchords.orchordsai.data.datastore.migration.SettingsJsonMigrator
 import com.orchords.orchordsai.data.sync.DATABASE_BACKUP_ENTRY
 import com.orchords.orchordsai.data.sync.DatabaseSnapshotService
@@ -192,7 +193,7 @@ class WebDavSync(
                                 try {
                                     val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
                                     val settings = json.decodeFromString<Settings>(migratedJson)
-                                    settingsStore.update(settings)
+                                    settingsStore.update(validateSettingsPromptContent(settings))
                                     Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                                 } catch (e: Exception) {
                                     Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
