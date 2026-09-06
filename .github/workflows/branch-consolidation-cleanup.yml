@@ -1,0 +1,56 @@
+name: Audited Branch Consolidation
+
+on:
+  workflow_run:
+    workflows: [Main Verification]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audited-branch-consolidation
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: >-
+      github.repository == 'ORCHORDS/OrchordsStudioAi' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: main-verification
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the exact tested main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test cleanup against isolated local repositories
+        run: python3 -m unittest discover -s .github/scripts -p 'test_cleanup_consolidated_branches.py' -v
+      - name: Delete only the preserved audited heads
+        shell: bash
+        env:
+          VERIFIED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$GH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          ASKPASS
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass"
+          python3 .github/scripts/cleanup_consolidated_branches.py
