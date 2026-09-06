@@ -11,6 +11,7 @@ import com.orchords.orchordsai.data.files.SafeFilePaths
 import com.orchords.orchordsai.data.files.SkillPaths
 import com.orchords.orchordsai.data.datastore.Settings
 import com.orchords.orchordsai.data.datastore.SettingsStore
+import com.orchords.orchordsai.data.datastore.validateSettingsPromptContent
 import com.orchords.orchordsai.data.datastore.migration.SettingsJsonMigrator
 import com.orchords.orchordsai.data.sync.s3.S3Client
 import com.orchords.orchordsai.data.sync.s3.S3Config
@@ -209,7 +210,7 @@ class S3Sync(
                                 try {
                                     val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
                                     val settings = json.decodeFromString<Settings>(migratedJson)
-                                    settingsStore.update(settings)
+                                    settingsStore.update(validateSettingsPromptContent(settings))
                                     Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                                 } catch (e: Exception) {
                                     Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
