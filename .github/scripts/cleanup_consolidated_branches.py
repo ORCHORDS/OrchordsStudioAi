@@ -63,9 +63,11 @@ def select_candidates(heads, verified, expected, integration_branch, integration
         candidates[name] = actual
     actual = heads.get(integration_branch)
     if actual is not None:
-        if (not ancestor(integration_root, actual) or not ancestor(actual, verified) or
-                git("rev-parse", f"{actual}^{{tree}}") != git("rev-parse", f"{verified}^{{tree}}")):
-            raise RuntimeError("Integration branch is not fully preserved in the verified main tree")
+        # A true merge records the integration head in main history. Later main
+        # commits may legitimately change the tree, so ancestry is the durable
+        # preservation proof rather than permanent tree equality.
+        if not ancestor(integration_root, actual) or not ancestor(actual, verified):
+            raise RuntimeError("Integration branch is not fully preserved in verified main history")
         candidates[integration_branch] = actual
     return candidates
 
@@ -75,8 +77,6 @@ def delete_candidates(candidates):
         return
     if "main" in candidates:
         raise RuntimeError("main is never a deletion candidate")
-    # Explicit leases protect every head against writes after inspection. Atomic push
-    # prevents a rejected lease/protected branch from partially deleting the batch.
     leases = [f"--force-with-lease=refs/heads/{name}:{sha}" for name, sha in candidates.items()]
     deletes = [f":refs/heads/{name}" for name in candidates]
     print(git("push", "--atomic", "--porcelain", *leases, "origin", *deletes))

@@ -96,12 +96,22 @@ class CleanupSafetyTests(unittest.TestCase):
         cleanup.delete_candidates(self.choose())
         self.assertEqual({'main': self.main, 'new-work': self.base}, cleanup.inventory())
 
-    def test_integration_requires_matching_verified_tree(self):
+    def test_integration_head_can_be_ancestor_of_later_verified_main(self):
         self.call('push', 'origin', f'{self.base}:refs/heads/integration')
-        with self.assertRaisesRegex(RuntimeError, 'verified main tree'):
-            self.choose()
-        self.call('push', 'origin', f'{self.main}:refs/heads/integration')
-        self.assertEqual(self.main, self.choose()['integration'])
+        self.assertEqual(self.base, self.choose()['integration'])
+
+    def test_unmerged_integration_head_is_rejected(self):
+        self.call('switch', '-c', 'integration', self.base)
+        Path('integration-only').write_text('not merged')
+        self.call('add', 'integration-only')
+        self.call('commit', '-m', 'integration-only')
+        head = self.call('rev-parse', 'HEAD')
+        self.call('push', 'origin', 'integration')
+        with self.assertRaisesRegex(RuntimeError, 'preserved'):
+            cleanup.select_candidates(
+                cleanup.inventory(), self.main, {}, 'integration', self.base
+            )
+        self.assertEqual(head, cleanup.inventory()['integration'])
 
 
 if __name__ == '__main__':

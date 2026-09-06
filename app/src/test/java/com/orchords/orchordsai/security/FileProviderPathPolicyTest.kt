@@ -74,4 +74,22 @@ class FileProviderPathPolicyTest {
         assertTrue(workspaceVm.contains("File(cacheDir, \"workspace_share\")"))
         assertTrue(editedFiles.contains("File(context.cacheDir, \"workspace_share\")"))
     }
+
+    @Test
+    fun `share flows never grant write access`() {
+        val files = listOf(
+            "src/main/java/com/orchords/orchordsai/ui/activity/ShortcutHandlerActivity.kt",
+            "src/main/java/com/orchords/orchordsai/ui/components/ai/ChatAttachmentPicker.kt",
+            "src/main/java/com/orchords/orchordsai/data/export/ExportHooks.kt",
+            "src/main/java/com/orchords/orchordsai/ui/pages/chat/Export.kt",
+            "src/main/java/com/orchords/orchordsai/ui/components/message/ChatMessage.kt",
+            "src/main/java/com/orchords/orchordsai/ui/components/message/ChatMessageEditedFiles.kt",
+            "src/main/java/com/orchords/orchordsai/ui/pages/extensions/workspace/WorkspaceDetailPage.kt",
+        )
+        val combined = files.joinToString("\n") { source(it) }
+        assertFalse(
+            "Read-only share/capture flows must not grant write URI permission",
+            combined.contains("FLAG_GRANT_WRITE_URI_PERMISSION"),
+        )
+    }
 }
