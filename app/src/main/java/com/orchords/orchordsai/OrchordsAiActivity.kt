@@ -130,7 +130,6 @@ import com.orchords.orchordsai.ui.pages.translator.TranslatorPage
 import com.orchords.orchordsai.ui.pages.webview.WebViewPage
 import com.orchords.orchordsai.ui.theme.LocalDarkMode
 import com.orchords.orchordsai.ui.theme.OrchordsAITheme
-import com.orchords.orchordsai.ui.components.ui.OrchardsStartupLoadingIndicator
 import com.orchords.orchordsai.R
 import com.orchords.orchordsai.utils.CrashHandler
 import com.orchords.orchordsai.utils.openUsageAccessSettings
@@ -176,6 +175,7 @@ class OrchordsAiActivity : ComponentActivity() {
         setContent {
             OrchordsAITheme {
                 var showStartup by remember { mutableStateOf(savedInstanceState == null) }
+                val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
                 setSingletonImageLoaderFactory { context ->
                     ImageLoader.Builder(context)
                         .crossfade(true)
@@ -198,7 +198,7 @@ class OrchordsAiActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     AppRoutes()
                     AnimatedVisibility(
-                        visible = showStartup,
+                        visible = showStartup || migrationState is MigrationState.Migrating,
                         enter = fadeIn(),
                         exit = fadeOut(),
                     ) {
@@ -209,7 +209,11 @@ class OrchordsAiActivity : ComponentActivity() {
                             contentAlignment = Alignment.Center,
                         ) {
                             OrchardsStartupLoadingIndicator(
-                                onFinished = { showStartup = false },
+                                onFinished = {
+                                    if (migrationState !is MigrationState.Migrating) {
+                                        showStartup = false
+                                    }
+                                },
                             )
                         }
                     }
@@ -277,7 +281,6 @@ class OrchordsAiActivity : ComponentActivity() {
                 }
             }
         }
-        val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
         val startScreen = Screen.Chat(
             id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
@@ -561,24 +564,6 @@ class OrchordsAiActivity : ComponentActivity() {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         )
-                    }
-                    AnimatedVisibility(
-                        visible = migrationState is MigrationState.Migrating,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        val state = migrationState as? MigrationState.Migrating
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            OrchardsStartupLoadingIndicator(
-                                detail = state?.let { "v${it.from} → v${it.to}" },
-                            )
-                        }
                     }
                 }
             }

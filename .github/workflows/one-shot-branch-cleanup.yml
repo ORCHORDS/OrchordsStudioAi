@@ -1,75 +1,56 @@
-name: One-shot stale branch cleanup
+name: Audited Branch Consolidation
 
 on:
-  push:
+  workflow_run:
+    workflows: [Main Verification]
     branches: [main]
-    paths:
-      - .github/workflows/one-shot-branch-cleanup.yml
+    types: [completed]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: audited-branch-consolidation
+  cancel-in-progress: false
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    if: >-
+      github.repository == 'ORCHORDS/OrchordsStudioAi' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: main-verification
+    timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
-      - name: Delete branches with no commits ahead of main
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
+      - name: Checkout the exact tested main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test cleanup against isolated local repositories
+        run: python3 -m unittest discover -s .github/scripts -p 'test_cleanup_consolidated_branches.py' -v
+      - name: Delete only the preserved audited heads
         shell: bash
+        env:
+          VERIFIED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: '0'
         run: |
           set -euo pipefail
-
-          api="https://api.github.com/repos/${REPO}"
-          page=1
-          kept=()
-          deleted=()
-
-          while true; do
-            branches="$(curl -fsSL \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "${api}/branches?per_page=100&page=${page}")"
-
-            count="$(jq 'length' <<<"${branches}")"
-            [[ "${count}" -eq 0 ]] && break
-
-            while IFS= read -r branch; do
-              [[ "${branch}" == "main" ]] && continue
-
-              encoded_branch="$(jq -rn --arg v "${branch}" '$v|@uri')"
-              comparison="$(curl -fsSL \
-                -H "Authorization: Bearer ${GH_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "${api}/compare/main...${encoded_branch}")"
-              ahead="$(jq -r '.ahead_by' <<<"${comparison}")"
-
-              if [[ "${ahead}" -eq 0 ]]; then
-                encoded_ref="$(jq -rn --arg v "heads/${branch}" '$v|@uri')"
-                curl -fsSL -X DELETE \
-                  -H "Authorization: Bearer ${GH_TOKEN}" \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "${api}/git/refs/${encoded_ref}"
-                echo "Deleted ${branch}"
-                deleted+=("${branch}")
-              else
-                echo "KEEP ${branch}: ${ahead} commit(s) ahead of main"
-                kept+=("${branch}:${ahead}")
-              fi
-            done < <(jq -r '.[].name' <<<"${branches}")
-
-            page=$((page + 1))
-          done
-
-          echo "Deleted ${#deleted[@]} fully integrated branch(es)."
-          if ((${#kept[@]})); then
-            printf 'Unmerged branches retained safely:\n'
-            printf ' - %s\n' "${kept[@]}"
-            echo 'Cleanup completed successfully; retained branches require integration before deletion.'
-          else
-            echo "Only main remains (apart from any branch created concurrently after enumeration)."
-          fi
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$GH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          ASKPASS
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass"
+          python3 .github/scripts/cleanup_consolidated_branches.py
