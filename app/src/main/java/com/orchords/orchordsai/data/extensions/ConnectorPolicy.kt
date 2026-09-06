@@ -6,7 +6,7 @@ data class ConnectorConnectionSnapshot(val connectionId: String, val connectorId
 data class ConnectorInvocation(val requestId: String, val actorId: String, val connectionId: String, val actionId: String, val resourceId: String, val argumentDigest: String)
 data class ConnectorAccessSnapshot(val connectionIds: Set<String>, val actionIds: Set<String>, val resourceIds: Set<String>, val runtimeAllowed: Boolean, val actorId: String = "")
 data class ConnectorApproval(val approvalId: String, val invocation: ConnectorInvocation, val accountId: String, val connectionRevision: Long, val issuedAtMillis: Long, val expiresAtMillis: Long, val actionVersion: Int = 1, val risk: ConnectorRisk = ConnectorRisk.WRITE)
-enum class ConnectorDecision { ALLOW, INVALID_REQUEST, ADAPTER_UNAVAILABLE, CONNECTION_UNAVAILABLE, IDENTITY_MISMATCH, POLICY_DENIED, SCOPE_DENIED, APPROVAL_REQUIRED, APPROVAL_MISMATCH, APPROVAL_EXPIRED }
+enum class ConnectorDecision { ALLOW, INVALID_REQUEST, ARGUMENT_MISMATCH, ADAPTER_UNAVAILABLE, CONNECTION_UNAVAILABLE, IDENTITY_MISMATCH, POLICY_DENIED, SCOPE_DENIED, APPROVAL_REQUIRED, APPROVAL_MISMATCH, APPROVAL_EXPIRED }
 /**
  * Pure preflight only. All inputs except user action arguments must be resolved by the trusted
  * runtime, never deserialized from model-supplied approval/connection/permission objects.
