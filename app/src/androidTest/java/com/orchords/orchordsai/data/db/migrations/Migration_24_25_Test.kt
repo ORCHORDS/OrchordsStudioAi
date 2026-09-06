@@ -6,6 +6,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.orchords.orchordsai.data.db.AppDatabase
+import com.orchords.orchordsai.data.db.entity.ConversationEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -55,7 +56,7 @@ class Migration_24_25_Test {
 
         val check = db.query("SELECT payload_blob_id FROM message_node WHERE id = 'm'")
         assertTrue("Inserted row should exist", check.moveToFirst())
-        assertNull("payload_blob_id default is NULL", check.isNull(0))
+        assertTrue("payload_blob_id default is NULL", check.isNull(0))
         check.close()
 
         db.close()
@@ -85,10 +86,10 @@ class Migration_24_25_Test {
         val legacyInline2 = """[{"role":"assistant","parts":[{"text":"hello"}]}]"""
 
         helper.createDatabase(TEST_DB, 24).apply {
-            // Insert the parent conversation row so the FK on message_node.conversation_id is satisfied.
+            // Use the actual v24 ConversationEntity schema; truncate_index was removed before v24.
             execSQL(
-                "INSERT INTO conversationentity (id, assistant_id, title, nodes, truncate_index, suggestions, is_pinned, create_at, update_at) " +
-                    "VALUES ('$conversationId', 'assistant-id', 'legacy', '[]', -1, '[]', 0, 0, 0)"
+                "INSERT INTO conversationentity (id, assistant_id, title, nodes, suggestions, is_pinned, create_at, update_at) " +
+                    "VALUES ('$conversationId', 'assistant-id', 'legacy', '[]', '[]', 0, 0, 0)"
             )
             execSQL(
                 "INSERT INTO message_node (id, conversation_id, node_index, messages, select_index) " +
@@ -110,7 +111,7 @@ class Migration_24_25_Test {
             "SELECT payload_blob_id FROM message_node WHERE id = '$nodeId1'"
         )
         assertTrue(blobCheck.moveToFirst())
-        assertNull("Legacy inline row keeps payload_blob_id NULL", blobCheck.isNull(0))
+        assertTrue("Legacy inline row keeps payload_blob_id NULL", blobCheck.isNull(0))
         blobCheck.close()
 
         db.close()
@@ -169,10 +170,23 @@ class Migration_24_25_Test {
             .addMigrations(Migration_24_25)
             .build()
         try {
-            // Insert + read via the entity to assert the column is mapped.
+            // MessageNodeEntity has a real FK to ConversationEntity, so create its parent first.
+            val conversationId = "00000000-0000-0000-0000-000000000020"
+            db.conversationDao().insert(
+                ConversationEntity(
+                    id = conversationId,
+                    assistantId = "assistant-id",
+                    title = "migration parent",
+                    nodes = "[]",
+                    createAt = 0L,
+                    updateAt = 0L,
+                    chatSuggestions = "[]",
+                    isPinned = false,
+                )
+            )
             val node = com.orchords.orchordsai.data.db.entity.MessageNodeEntity(
                 id = "00000000-0000-0000-0000-000000000010",
-                conversationId = "00000000-0000-0000-0000-000000000020",
+                conversationId = conversationId,
                 nodeIndex = 0,
                 messages = "[]",
                 selectIndex = 0,
