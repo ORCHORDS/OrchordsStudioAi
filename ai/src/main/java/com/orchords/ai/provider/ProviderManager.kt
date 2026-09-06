@@ -3,6 +3,7 @@ package com.orchords.ai.provider
 import android.content.Context
 import com.orchords.ai.provider.providers.claude.ClaudeProvider
 import com.orchords.ai.provider.providers.google.GoogleProvider
+import com.orchords.ai.provider.providers.openai.OpenAIChatToolResultPolicyProvider
 import com.orchords.ai.provider.providers.openai.OpenAIProvider
 import okhttp3.OkHttpClient
 
@@ -15,7 +16,10 @@ class ProviderManager(client: OkHttpClient, context: Context) {
         .build()
 
     init {
-        registerProvider("openai", OpenAIProvider(providerClient, context))
+        registerProvider(
+            "openai",
+            OpenAIChatToolResultPolicyProvider(OpenAIProvider(providerClient, context)),
+        )
         registerProvider("google", GoogleProvider(providerClient, context))
         registerProvider("claude", ClaudeProvider(providerClient, context))
     }
