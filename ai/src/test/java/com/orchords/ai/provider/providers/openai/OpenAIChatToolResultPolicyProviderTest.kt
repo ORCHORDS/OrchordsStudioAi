@@ -104,7 +104,7 @@ class OpenAIChatToolResultPolicyProviderTest {
         assertEquals(2, lowered.last().parts.filterIsInstance<UIMessagePart.Image>().size)
     }
 
-    @Test
+    @Test(timeout = 5_000)
     fun `responses path preserves canonical rich tool result`() = runBlocking {
         var received: List<UIMessage>? = null
         val delegate = object : Provider<ProviderSetting.OpenAI> {
